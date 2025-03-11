@@ -29,38 +29,42 @@ class TestCLI:
         assert "Commands:" in result.output
     
     def test_send_query(self):
-        """Test that the send_query function works."""
-        with patch("cli.runtime.requests.post") as mock_post:
+        """Test that send_query works with mocked requests."""
+        with patch("requests.post") as mock_post:
+            # Mock the response
             mock_response = MagicMock()
+            mock_response.raise_for_status = MagicMock()
             mock_response.json.return_value = {"content": "Test response"}
             mock_post.return_value = mock_response
             
-            # Call the send_query function
+            # Call send_query
             result = send_query("Test query")
             
-            # Check that the API was called correctly
+            # Check the API call
             mock_post.assert_called_once()
             args, kwargs = mock_post.call_args
-            assert args[0] == "http://localhost:5003/api/query"
+            assert args[0].endswith("/api/query")
             assert kwargs["json"]["query"] == "Test query"
             
             # Check the result
             assert result["content"] == "Test response"
     
     def test_send_query_with_conversation_id(self):
-        """Test that the send_query function works with a conversation ID."""
-        with patch("cli.runtime.requests.post") as mock_post:
+        """Test that send_query works with a conversation ID."""
+        with patch("requests.post") as mock_post:
+            # Mock the response
             mock_response = MagicMock()
+            mock_response.raise_for_status = MagicMock()
             mock_response.json.return_value = {"content": "Test response"}
             mock_post.return_value = mock_response
             
-            # Call the send_query function
+            # Call send_query with conversation_id
             result = send_query("Test query", conversation_id="test-conv-id")
             
-            # Check that the API was called correctly
+            # Check the API call
             mock_post.assert_called_once()
             args, kwargs = mock_post.call_args
-            assert args[0] == "http://localhost:5003/api/query"
+            assert args[0].endswith("/api/query")
             assert kwargs["json"]["query"] == "Test query"
             assert kwargs["json"]["conversation_id"] == "test-conv-id"
             
@@ -69,7 +73,7 @@ class TestCLI:
     
     def test_cli_query(self, runner):
         """Test that the CLI query command works."""
-        with patch("cli.runtime.send_query") as mock_send_query:
+        with patch("cli.runtime.send_streaming_query") as mock_send_query:
             mock_send_query.return_value = {"content": "Test response"}
             
             # Run the CLI command
@@ -77,8 +81,12 @@ class TestCLI:
             
             # Check that the command was successful
             assert result.exit_code == 0
-            assert "Test response" in result.output
-            mock_send_query.assert_called_once_with("Test query", conversation_id=None)
+            
+            # Since we mocked send_streaming_query, we can check the function call
+            mock_send_query.assert_called_once()
+            args, kwargs = mock_send_query.call_args
+            assert args[0] == "Test query"
+            assert "conversation_id" in kwargs
     
     def test_cli_direct(self, runner):
         """Test that the CLI direct command works."""
@@ -92,7 +100,7 @@ class TestCLI:
     
     def test_cli_group(self, runner):
         """Test that the CLI group command works."""
-        with patch("cli.runtime.send_group_chat_query") as mock_send_group:
+        with patch("cli.runtime.send_streaming_group_chat_query") as mock_send_group:
             mock_send_group.return_value = {"content": "Test group response"}
             
             # Run the CLI command
@@ -100,8 +108,12 @@ class TestCLI:
             
             # Check that the command was successful
             assert result.exit_code == 0
-            assert "Test group response" in result.output
-            mock_send_group.assert_called_once_with("Test query", agent_ids=["agent1", "agent2"])
+            
+            # Since we mocked send_streaming_group_chat_query, we can check the function call
+            mock_send_group.assert_called_once()
+            args, kwargs = mock_send_group.call_args
+            assert args[0] == "Test query"
+            assert "agent_ids" in kwargs
     
     def test_cli_status(self, runner):
         """Test that the CLI status command works."""

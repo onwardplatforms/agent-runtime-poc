@@ -40,8 +40,11 @@ class TestAPI:
         # Override the get_runtime dependency
         app.dependency_overrides[get_runtime] = lambda: mock_runtime
         
+        # Set up the mock to use process_query instead of stream_process_query
+        mock_runtime.enable_streaming = False
+        
         try:
-            response = client.post("/api/query", json={"query": "Test query"})
+            response = client.post("/api/query", json={"query": "Test query", "stream": False})
             assert response.status_code == 200
             response_json = response.json()
             assert "content" in response_json
@@ -63,8 +66,11 @@ class TestAPI:
         # Override the get_runtime dependency
         app.dependency_overrides[get_runtime] = lambda: mock_runtime
         
+        # Set up the mock to use process_query instead of stream_process_query
+        mock_runtime.enable_streaming = False
+        
         try:
-            response = client.post("/api/query", json={"query": "Test query", "conversation_id": "test-conv-id"})
+            response = client.post("/api/query", json={"query": "Test query", "conversation_id": "test-conv-id", "stream": False})
             assert response.status_code == 200
             response_json = response.json()
             assert "content" in response_json
