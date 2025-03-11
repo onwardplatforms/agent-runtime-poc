@@ -11,3 +11,10 @@ pytest
 pytest-asyncio
 httpx
 pytest-cov
+flake8
+mypy
+autoflake
+isort
+autopep8
+types-requests
+types-colorama

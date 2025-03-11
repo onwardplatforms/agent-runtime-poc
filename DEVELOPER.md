@@ -2,6 +2,92 @@
 
 This document provides technical details about the Agent Runtime system for developers.
 
+## Architectural Separation
+
+The system is built with a clear separation of concerns across three distinct layers:
+
+### 1. CLI Layer (User Interface)
+- Implemented in `cli/runtime.py` and `cli/runtime_cli.py`
+- Focused solely on user interaction and display formatting
+- Makes HTTP requests to the API layer
+- Processes streaming responses via SSE handling
+- Maintains consistent formatting of interactions with "you → " and "runtime → " prefixes
+
+### 2. API Layer (Communication)
+- Implemented in `api/runtime_api.py`
+- Acts as the boundary between clients and the runtime core
+- Handles HTTP requests and translates them to runtime calls
+- Implements Server-Sent Events (SSE) for streaming responses
+- Provides a stable contract for any client to build against
+
+### 3. Runtime Layer (Core Logic)
+- Implemented in `runtime/agent_runtime.py`
+- Contains all orchestration and agent handling logic
+- Uses Semantic Kernel for agent selection and function calling
+- Implements streaming at the LLM level for responsive interactions
+- Maintains conversation history and context
+
+## Streaming Implementation Details
+
+The streaming implementation works across all three layers:
+
+### Runtime Layer Streaming
+```python
+# In agent_runtime.py
+response_stream = chat_service.get_streaming_chat_message_content(
+    chat_history=chat_history,
+    settings=settings,
+    kernel=self.kernel
+)
+
+# Process each chunk as it arrives
+async for chunk in response_stream:
+    if chunk:
+        # Extract the chunk text
+        chunk_text = str(chunk)
+        # Add each chunk to event queue for streaming to client
+        await self.event_queue.put({
+            "content": chunk_text
+        })
+```
+
+### API Layer Streaming
+```python
+# In runtime_api.py
+async def stream_query_response(query: Query, runtime: AgentRuntime):
+    async for chunk in runtime.stream_process_query(
+        query=query.query,
+        conversation_id=query.conversation_id,
+        verbose=query.verbose
+    ):
+        # Format and send the chunk as SSE
+        if isinstance(chunk, str):
+            yield f"data: {json.dumps({'content': chunk})}\n\n"
+        else:
+            yield f"data: {json.dumps(chunk)}\n\n"
+```
+
+### CLI Layer Streaming
+```python
+# In runtime.py
+for line in response.iter_lines():
+    if line.startswith(b'data: '):
+        data_str = line[6:].decode('utf-8')
+        data = json.loads(data_str)
+        
+        if "content" in data:
+            chunk = data["content"]
+            if chunk:
+                # Display chunk as it arrives
+                if not is_displaying_response:
+                    click.echo(f"\nruntime → ", nl=False)
+                    is_displaying_response = True
+                
+                # Stream the chunk without newline
+                click.echo(chunk, nl=False)
+                sys.stdout.flush()  # Force immediate display
+```
+
 ## Agent Invocation Technical Flow
 
 This section explains the technical flow of how agent invocation works in the system.
@@ -10,28 +96,29 @@ This section explains the technical flow of how agent invocation works in the sy
 
 1. **CLI to Runtime API**
    - User input is captured in `interactive_mode()` in `runtime.py`
-   - Query is sent to the runtime via `send_query()` which makes a POST request to `/api/query`
+   - Input is displayed with "you → " prefix for consistent formatting
+   - Query is sent to the runtime via `send_streaming_query()` which makes a POST request to `/api/query`
    - The FastAPI endpoint `process_query()` in `runtime_api.py` receives the request
 
 2. **Agent Selection via Semantic Kernel**
    - The runtime's `process_query()` method in `agent_runtime.py` is called
    - It creates a `ChatHistory` object and adds the user's query
-   - The query is processed by Semantic Kernel's chat service using `get_chat_message_contents()`
+   - The query is processed by Semantic Kernel's chat service using `get_streaming_chat_message_content()`
    - Semantic Kernel determines which agent functions to call based on the query content
 
 3. **Agent Function Calling**
    - When Semantic Kernel decides to call an agent, it invokes the `call_agent()` method of the `AgentPlugin` class
    - The `call_agent()` method is decorated with `@kernel_function` to make it available to Semantic Kernel
    - The method sets `last_called_agent` to track which agent is being called
-   - It prints the agent call notification: `ƒ(x) calling the [agent-id] agent...`
+   - It sends an event to the event queue with the agent call information: `{"agent_call": self.id}`
    - It makes an HTTP POST request to the agent's endpoint with the query
 
 4. **Response Processing**
    - The agent processes the query and returns a response
    - The response is captured in the `call_agent()` method and returned to Semantic Kernel
-   - The runtime collects all agent responses and builds a final response message
-   - The `agents_used` field in the response contains the list of agents that were called
-   - The response is returned to the CLI, which displays it to the user
+   - The response is also sent to the event queue: `{"agent_id": self.id, "agent_response": response_content}`
+   - As the LLM generates its response, each token is streamed to the event queue
+   - The CLI displays each component of the response as it arrives
 
 ## Testing
 
@@ -96,6 +183,26 @@ python -m pytest tests/test_agent_runtime.py
    - It sends an HTTP POST request directly to the agent's endpoint
    - The response is displayed to the user without runtime processing
 
+## UI and UX Considerations
+
+The CLI implementation follows these key UX principles:
+
+1. **Consistent Formatting**
+   - User inputs are always prefixed with "you → "
+   - Runtime responses are prefixed with "runtime → "
+   - Agent calls use "ƒ(x) calling agent-id..." format
+   - Agent queries and responses are indented with " ↪ " prefix
+
+2. **Real-time Feedback**
+   - All events (agent calls, responses, LLM output) are displayed as they happen
+   - Streaming output shows LLM responses token by token
+   - Use of console output formatting (color, style) to distinguish different types of information
+
+3. **Clear Indication of System State**
+   - User always knows which component (runtime or agent) is responding
+   - Agent call notation clearly shows when external systems are being invoked
+   - Each conversation turn is clearly delineated
+
 ## Key Components
 
 ### AgentPlugin
@@ -120,11 +227,24 @@ class AgentPlugin:
         global last_called_agent
         last_called_agent = self.id
         
-        # Print the agent call notification
-        print(f"\nƒ(x) calling the [{self.id}] agent...")
+        # Emit an agent_call event for streaming clients
+        if hasattr(self, '_event_queue') and self._event_queue is not None:
+            await self._event_queue.put({
+                "agent_call": self.id,
+                "agent_query": query
+            })
         
         # Make HTTP request to agent endpoint
         # ...
+        
+        # Emit the agent response event for streaming clients
+        if hasattr(self, '_event_queue') and self._event_queue is not None:
+            await self._event_queue.put({
+                "agent_id": self.id,
+                "agent_response": response_content
+            })
+        
+        return response_content
 ```
 
 ### AgentRuntime
@@ -141,66 +261,55 @@ class AgentRuntime:
         self.initialize_kernel()
         self.register_agent_plugins()
         
-    async def process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False, max_agents: int = None) -> Dict[str, Any]:
-        # Initialize conversation if not provided
-        if not conversation_id:
-            conversation_id = str(uuid.uuid4())
+    async def stream_process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False):
+        """Stream the processing of a query, yielding chunks of the response."""
+        # Create an event queue for this streaming session
+        self.event_queue = asyncio.Queue()
         
-        # Initialize conversation history if it doesn't exist
-        if conversation_id not in self.conversations:
-            self.conversations[conversation_id] = []
+        # Set event queue on agents temporarily
+        for agent in self.agents.values():
+            agent._event_queue = self.event_queue
         
-        # Add user message to conversation history
-        self.conversations[conversation_id].append({
-            "role": "user",
-            "content": query,
-            "timestamp": datetime.datetime.now().isoformat()
-        })
+        # Create a background task to process the query
+        query_task = asyncio.create_task(self._process_query_with_events(query, conversation_id, verbose))
         
-        # Process query with Semantic Kernel
-        # ...
+        # Yield the events from the queue as they arrive
+        while not query_task.done() or not self.event_queue.empty():
+            try:
+                event = await asyncio.wait_for(self.event_queue.get(), 0.1)
+                yield event
+                self.event_queue.task_done()
+            except asyncio.TimeoutError:
+                if query_task.done():
+                    result = query_task.result()
+                    if result:
+                        yield result
+                    break
 ```
 
-### ChatHistory
+### StreamingChatMessageContent
 
-The `ChatHistory` class from Semantic Kernel maintains the conversation context:
-
-```python
-# Create a chat history for the conversation
-chat_history = ChatHistory()
-
-# Add system message
-system_message = """
-You are an orchestrator for multiple specialized agents. Your job is to:
-1. Understand user queries and decide which agent functions should handle them
-2. Provide a complete, coherent response that incorporates information from the agents
-3. Only call agent functions when necessary to answer the query
-"""
-chat_history.add_system_message(system_message)
-
-# Add conversation history
-for message in self.conversations[conversation_id]:
-    if message["role"] == "user":
-        chat_history.add_user_message(message["content"])
-    elif message["role"] == "assistant":
-        chat_history.add_assistant_message(message["content"])
-```
-
-### PromptExecutionSettings
-
-The `PromptExecutionSettings` class configures how Semantic Kernel handles function calling:
+The system leverages Semantic Kernel's streaming capabilities:
 
 ```python
-# Set up function calling behavior
-settings = PromptExecutionSettings()
-settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
-
-# Process the query with function calling
-result = await chat_service.get_chat_message_contents(
+# Get the streaming result from the chat service
+response_stream = chat_service.get_streaming_chat_message_content(
     chat_history=chat_history,
     settings=settings,
     kernel=self.kernel
 )
+
+# Process each chunk of the response as it arrives
+async for chunk in response_stream:
+    if chunk:
+        # Extract the chunk text
+        chunk_text = str(chunk)
+        # Add to accumulated response
+        full_response_content += chunk_text
+        # Add each chunk to event queue for streaming to client
+        await self.event_queue.put({
+            "content": chunk_text
+        })
 ```
 
 ## Debugging Tips
@@ -208,14 +317,15 @@ result = await chat_service.get_chat_message_contents(
 1. **Viewing Agent Calls**
    - Agent calls are displayed in real-time with the `ƒ(x)` notation
    - The `agents_used` field in the response contains all agents that were called
+   - Debug output can be enabled with `DEBUG=True` or `export AGENT_RUNTIME_DEBUG=true`
 
 2. **Checking Agent Registration**
    - Agents are registered as plugins with Semantic Kernel during initialization
    - The `register_agent_plugins()` method in `AgentRuntime` handles this process
 
-3. **Fallback Mechanism**
-   - If Semantic Kernel's function calling fails, the system falls back to a keyword-based approach
-   - The `_fallback_process_query()` method in `AgentRuntime` implements this fallback
+3. **Streaming Observation**
+   - To observe the raw streaming data, set `DEBUG=True` to see each chunk as it arrives
+   - The system processes SSE format data with `data:` prefixed JSON objects
 
 4. **Message Format**
    - All messages follow a standard format with `messageId`, `conversationId`, `senderId`, `recipientId`, `content`, `timestamp`, and `type`
