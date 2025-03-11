@@ -5,19 +5,20 @@ import sys
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from click.testing import CliRunner
+import requests
 
 # Add the parent directory to the path so we can import the CLI module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the CLI module
-from cli.runtime import cli, send_query
+from cli.runtime import cli, send_query, send_streaming_query, send_streaming_group_chat_query
 
 class TestCLI:
     """Tests for the CLI functionality."""
     
     @pytest.fixture
     def runner(self):
-        """Create a Click CLI runner for testing."""
+        """Create a CLI runner for testing."""
         return CliRunner()
     
     def test_cli_help(self, runner):
@@ -146,6 +147,127 @@ class TestCLI:
             assert "Agent 1" in result.output
             assert "Agent 2" in result.output
             mock_list_agents.assert_called_once()
+
+    def test_send_streaming_query(self):
+        """Test the send_streaming_query function."""
+        # Create a mock response object with streaming content
+        mock_response = MagicMock()
+        mock_response.iter_lines.return_value = [
+            b'data: {"content": "First chunk"}',
+            b'data: {"agent_call": "test-agent", "agent_query": "agent query"}',
+            b'data: {"agent_id": "test-agent", "agent_response": "agent response"}',
+            b'data: {"content": "Second chunk"}',
+            b'data: [DONE]'
+        ]
+        mock_response.raise_for_status = MagicMock()
+        
+        # Mock the requests.post method
+        with patch('requests.post') as mock_post, \
+             patch('click.echo') as mock_echo, \
+             patch('sys.stdout.flush') as mock_flush:
+            
+            mock_post.return_value.__enter__.return_value = mock_response
+            
+            # Call the function
+            result = send_streaming_query("Test query", conversation_id="test-conversation")
+            
+            # Verify the request was made correctly
+            mock_post.assert_called_once()
+            args, kwargs = mock_post.call_args
+            assert kwargs["json"]["query"] == "Test query"
+            assert kwargs["json"]["conversation_id"] == "test-conversation"
+            assert kwargs["json"]["stream"] is True
+            
+            # Verify the response handling
+            assert mock_echo.call_count >= 3  # At least for agent call and content chunks
+            
+            # Verify content was displayed
+            content_displayed = False
+            for call in mock_echo.call_args_list:
+                args, kwargs = call
+                if args and "First chunk" in str(args[0]):
+                    content_displayed = True
+                    break
+            assert content_displayed, "Content not displayed"
+            
+            # Verify stdout was flushed for streaming effect
+            assert mock_flush.called
+    
+    def test_send_streaming_query_error_handling(self):
+        """Test error handling in send_streaming_query function."""
+        # Mock the requests.post method to raise an exception
+        with patch('requests.post') as mock_post, \
+             patch('click.echo') as mock_echo:
+            
+            mock_post.side_effect = requests.exceptions.RequestException("Test error")
+            
+            # Call the function
+            result = send_streaming_query("Test query")
+            
+            # Verify error handling
+            assert "error" in result
+            assert result["error"] == "Test error"
+            
+            # Verify error message was displayed
+            error_displayed = False
+            for call in mock_echo.call_args_list:
+                args, kwargs = call
+                if args and "Error communicating with the runtime: Test error" in str(args[0]):
+                    error_displayed = True
+                    break
+            assert error_displayed, "Error message not displayed"
+    
+    def test_send_streaming_group_chat_query(self):
+        """Test the send_streaming_group_chat_query function."""
+        # Create a mock response object with streaming content
+        mock_response = MagicMock()
+        mock_response.iter_lines.return_value = [
+            b'data: {"chunk": "Starting group chat streaming response...", "complete": false}',
+            b'data: {"content": "First group chat chunk"}',
+            b'data: {"agent_call": "test-agent", "agent_query": "agent query"}',
+            b'data: {"agent_id": "test-agent", "agent_response": "agent response"}',
+            b'data: {"content": "Second group chat chunk"}',
+            b'data: {"chunk": "Group chat streaming complete", "complete": true}',
+            b'data: [DONE]'
+        ]
+        mock_response.raise_for_status = MagicMock()
+        
+        # Mock the requests.post method
+        with patch('requests.post') as mock_post, \
+             patch('click.echo') as mock_echo, \
+             patch('sys.stdout.flush') as mock_flush:
+            
+            mock_post.return_value.__enter__.return_value = mock_response
+            
+            # Call the function
+            result = send_streaming_group_chat_query(
+                "Test group query",
+                agent_ids=["agent1", "agent2"],
+                conversation_id="test-conversation"
+            )
+            
+            # Verify the request was made correctly
+            mock_post.assert_called_once()
+            args, kwargs = mock_post.call_args
+            assert kwargs["json"]["query"] == "Test group query"
+            assert kwargs["json"]["agent_ids"] == ["agent1", "agent2"]
+            assert kwargs["json"]["conversation_id"] == "test-conversation"
+            assert kwargs["json"]["stream"] is True
+            
+            # Verify the response handling
+            assert mock_echo.call_count >= 3  # At least for agent call and content chunks
+            
+            # Verify content was displayed
+            content_displayed = False
+            for call in mock_echo.call_args_list:
+                args, kwargs = call
+                if args and "group chat chunk" in str(args[0]):
+                    content_displayed = True
+                    break
+            assert content_displayed, "Group chat content not displayed"
+            
+            # Verify stdout was flushed for streaming effect
+            assert mock_flush.called
 
 if __name__ == "__main__":
     pytest.main(["-xvs", __file__]) 

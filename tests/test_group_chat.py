@@ -5,6 +5,7 @@ import sys
 import pytest
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
+from typing import List, Dict, Any
 
 # Add the parent directory to the path so we can import the runtime module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -145,6 +146,70 @@ class TestAgentGroupChat:
             assert group_chat.messages[0]["content"] == "Test query"
             assert group_chat.messages[1]["role"] == "assistant"
             assert group_chat.messages[1]["content"] == "Test response"
+    
+    @pytest.mark.asyncio
+    async def test_process_query_with_max_iterations(self, mock_agents):
+        """Test that the group chat respects the max_iterations setting."""
+        # Create a termination strategy with a very low max iterations
+        strategy = AgentTerminationStrategy(max_iterations=1)
+        group_chat = AgentGroupChat(mock_agents, strategy)
+        
+        # Process a query
+        response = await group_chat.process_query("Test query", "test-user", "test-conversation")
+        
+        # Verify both agents were called exactly once
+        mock_agents[0].call_agent.assert_called_once()
+        mock_agents[1].call_agent.assert_called_once()
+        
+        # Check that the response contains both agent responses
+        assert "Response from Agent 1" in response["content"]
+        assert "Response from Agent 2" in response["content"]
+    
+    @pytest.mark.asyncio
+    async def test_process_query_with_empty_agent_list(self):
+        """Test that processing a query with no agents works properly."""
+        # Create a group chat with no agents
+        strategy = AgentTerminationStrategy(max_iterations=3)
+        group_chat = AgentGroupChat([], strategy)
+        
+        # Process a query
+        response = await group_chat.process_query("Test query", "test-user", "test-conversation")
+        
+        # Check the response structure - when no agents are available, we should still get a valid response
+        assert response["conversationId"] == "test-conversation"
+        assert response["senderId"] == "agent-runtime"
+        assert response["recipientId"] == "test-user"
+        
+        # Check for agent responses array (should be empty)
+        assert "agent_responses" in response
+        assert len(response["agent_responses"]) == 0
+        
+        # The content may be empty or indicate no agents, depending on implementation
+        # Just verify it's a string
+        assert isinstance(response["content"], str)
+    
+    @pytest.mark.asyncio
+    async def test_process_query_with_custom_termination_strategy(self, mock_agents):
+        """Test that a custom termination strategy works properly."""
+        # Create a custom termination strategy that always terminates after one iteration
+        class CustomTerminationStrategy(AgentTerminationStrategy):
+            def should_terminate(self, iteration: int, messages: List[Dict[str, Any]]) -> bool:
+                return True
+        
+        # Create a group chat with the custom strategy
+        strategy = CustomTerminationStrategy()
+        group_chat = AgentGroupChat(mock_agents, strategy)
+        
+        # Process a query
+        response = await group_chat.process_query("Test query", "test-user", "test-conversation")
+        
+        # Verify both agents were called exactly once
+        mock_agents[0].call_agent.assert_called_once()
+        mock_agents[1].call_agent.assert_called_once()
+        
+        # Check the response
+        assert "Response from Agent 1" in response["content"]
+        assert "Response from Agent 2" in response["content"]
 
 if __name__ == "__main__":
     pytest.main(["-xvs", __file__]) 
