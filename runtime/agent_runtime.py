@@ -321,7 +321,7 @@ class AgentRuntime:
                     logger.debug(f"add_plugin failed: {e1}")
                     try:
                         logger.debug("Trying to register with create_plugin_from_object")
-                        plugin = self.kernel.create_plugin_from_object(agent, name=plugin_name)
+                        self.kernel.plugins.add_from_object(agent, plugin_name)
                         logger.info(f"Registered agent {agent_id} as a plugin using create_plugin_from_object")
                     except Exception as e2:
                         logger.debug(f"create_plugin_from_object failed: {e2}")
@@ -492,7 +492,9 @@ class AgentRuntime:
 
     def get_conversation_history(self, conversation_id: str) -> List[Dict[str, Any]]:
         """Get the conversation history for a specific conversation."""
-        return self.conversations.get(conversation_id, [])
+        if conversation_id in self.conversations:
+            return self.conversations[conversation_id]
+        return []
 
     def get_agent_by_id(self, agent_id: str) -> Optional[AgentPlugin]:
         """Get an agent by its ID."""
@@ -569,7 +571,7 @@ class AgentRuntime:
         try:
             if self.kernel:
                 # Create a chat history for this conversation
-                debug_print(f"DEBUG: Creating chat history for conversation")
+                debug_print("DEBUG: Creating chat history for conversation")
                 chat_history = ChatHistory()
 
                 # Add system message
@@ -590,11 +592,11 @@ class AgentRuntime:
                 - If a user query requires information you don't have, acknowledge limitations and ask for clarification
                 - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
                 """
-                debug_print(f"DEBUG: Adding system message to chat history")
+                debug_print("DEBUG: Adding system message to chat history")
                 chat_history.add_system_message(system_message)
 
                 # Add conversation history
-                debug_print(f"DEBUG: Adding conversation history to chat history")
+                debug_print("DEBUG: Adding conversation history to chat history")
                 for message in self.conversations[conversation_id]:
                     if message["role"] == "user":
                         chat_history.add_user_message(message["content"])
@@ -602,11 +604,11 @@ class AgentRuntime:
                         chat_history.add_assistant_message(message["content"])
 
                 # Get the chat service
-                debug_print(f"DEBUG: Getting chat service from kernel")
+                debug_print("DEBUG: Getting chat service from kernel")
                 chat_service = self.kernel.get_service("chat-gpt")
 
                 # Set up function calling behavior
-                debug_print(f"DEBUG: Setting up function calling behavior")
+                debug_print("DEBUG: Setting up function calling behavior")
                 settings = PromptExecutionSettings()
                 settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
 
@@ -616,7 +618,7 @@ class AgentRuntime:
                 debug_print("Using Semantic Kernel for function calling")
 
                 # Get the final result - STREAMING VERSION
-                debug_print(f"DEBUG: Getting streaming result from chat service")
+                debug_print("DEBUG: Getting streaming result from chat service")
                 # Don't use await directly on an async generator
                 response_stream = chat_service.get_streaming_chat_message_content(
                     chat_history=chat_history,
@@ -625,7 +627,7 @@ class AgentRuntime:
                 )
 
                 # Process each chunk of the response as it arrives
-                debug_print(f"DEBUG: Processing streaming response")
+                debug_print("DEBUG: Processing streaming response")
                 full_response_content = ""
                 chunks = []
 
@@ -646,7 +648,7 @@ class AgentRuntime:
                         await asyncio.sleep(0.01)
 
                 # Process the complete response
-                debug_print(f"DEBUG: Finished streaming, full response: {full_response_content}")
+                debug_print("DEBUG: Finished streaming, full response: {full_response_content}")
 
                 # Get the agents that were used
                 global last_called_agent
@@ -659,7 +661,7 @@ class AgentRuntime:
                     last_agent_response = None  # Reset the response
 
                 # Add to conversation history
-                debug_print(f"DEBUG: Adding assistant response to conversation history for {conversation_id}")
+                debug_print("DEBUG: Adding assistant response to conversation history for {conversation_id}")
                 self.conversations[conversation_id].append({
                     "role": "assistant",
                     "content": full_response_content,
@@ -668,7 +670,7 @@ class AgentRuntime:
                 })
 
                 # Return the complete response
-                debug_print(f"DEBUG: Returning complete response")
+                debug_print("DEBUG: Returning complete response")
                 return {
                     "chunk": None,
                     "complete": True,
@@ -687,7 +689,15 @@ class AgentRuntime:
 
 
 async def main():
-    """Main function to demonstrate the agent runtime."""
+    """Run the agent runtime."""
+    # Import what's needed here to avoid circular imports
+    import argparse
+    # Don't redefine asyncio which is already imported at the top
+    # Just use what's already available
+
+    parser = argparse.ArgumentParser(description="Agent Runtime")
+    parser.add_argument("--config", help="Path to agent configuration file")
+
     # Ensure the API key is set
     if not os.environ.get("OPENAI_API_KEY"):
         print("Please set the OPENAI_API_KEY environment variable")
@@ -715,5 +725,4 @@ async def main():
             print(f"Selected agents: {response['agents_used']}")
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

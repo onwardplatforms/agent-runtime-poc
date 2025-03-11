@@ -136,7 +136,7 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                                 # Display chunk as it arrives (without newline)
                                 if not is_displaying_response:
                                     # Start displaying the response
-                                    click.echo(f"\nruntime → ", nl=False)
+                                    click.echo("\nruntime → ", nl=False)
                                     is_displaying_response = True
 
                                 # Display the chunk without newline to create streaming effect
@@ -340,7 +340,7 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                             if chunk and chunk not in ["Starting group chat streaming response...", "Processing with Semantic Kernel...", "Group chat streaming complete"]:
                                 if not is_displaying_response:
                                     # Start displaying the response
-                                    click.echo(f"\nruntime → ", nl=False)
+                                    click.echo("\nruntime → ", nl=False)
                                     is_displaying_response = True
 
                                 # Display the chunk without newline to create streaming effect
@@ -753,7 +753,7 @@ def agents():
     """List available agents."""
     agents_response = list_agents()
     if "error" not in agents_response:
-        click.echo(f"\nAvailable Agents:")
+        click.echo("\nAvailable Agents:")
         for agent in agents_response.get("agents", []):
             click.echo(f"  {agent['name']} ({agent['id']})")
             click.echo(f"    Description: {agent['description']}")
@@ -771,7 +771,7 @@ def status():
     if runtime_available:
         click.echo(f"Runtime is available at {RUNTIME_URL}")
     else:
-        click.echo(f"Runtime is not available.")
+        click.echo("Runtime is not available.")
 
 
 if __name__ == "__main__":

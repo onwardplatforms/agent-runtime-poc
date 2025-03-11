@@ -171,7 +171,7 @@ class TestCLI:
             mock_post.return_value.__enter__.return_value = mock_response
 
             # Call the function
-            result = send_streaming_query("Test query", conversation_id="test-conversation")
+            send_streaming_query("Test query", conversation_id="test-conversation")
 
             # Verify the request was made correctly
             mock_post.assert_called_once()
@@ -242,17 +242,14 @@ class TestCLI:
             mock_post.return_value.__enter__.return_value = mock_response
 
             # Call the function
-            result = send_streaming_group_chat_query(
-                "Test group query",
-                agent_ids=["agent1", "agent2"],
-                conversation_id="test-conversation"
-            )
+            send_streaming_group_chat_query("Test query", agent_ids=["test-agent"],
+                                            conversation_id="test-conversation")
 
             # Verify the request was made correctly
             mock_post.assert_called_once()
             args, kwargs = mock_post.call_args
-            assert kwargs["json"]["query"] == "Test group query"
-            assert kwargs["json"]["agent_ids"] == ["agent1", "agent2"]
+            assert kwargs["json"]["query"] == "Test query"
+            assert kwargs["json"]["agent_ids"] == ["test-agent"]
             assert kwargs["json"]["conversation_id"] == "test-conversation"
             assert kwargs["json"]["stream"] is True
 
