@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import time
 import argparse
-import requests
 import logging
-from typing import Dict, List, Any, Optional
-from colorama import init, Fore, Style
+import time
+from typing import Any, Dict, List, Optional
+
+import requests
+from colorama import Fore, Style, init
 
 # Initialize colorama
 init()

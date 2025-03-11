@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 
-import json
-import os
-import uuid
-import time
 import asyncio
-import logging
-from typing import Dict, List, Any, Optional
 import datetime
-import aiohttp
+import json
+import logging
+import os
+import time
+import uuid
+from typing import Any, Dict, List, Optional
 
+import aiohttp
 import semantic_kernel as sk
-from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 from semantic_kernel.contents.chat_history import ChatHistory
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+from semantic_kernel.functions.kernel_function_decorator import kernel_function
 
 # Configure logging
 logging.basicConfig(

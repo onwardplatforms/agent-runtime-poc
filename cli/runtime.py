@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
-import os
-import sys
 import json
-import time
-import requests
+import os
 import re
-from typing import Dict, List, Any, Optional
+import sys
+import time
+from typing import Any, Dict, List, Optional
+
 import click
-from colorama import init, Fore, Style
+import requests
+from colorama import Fore, Style, init
 
 # Initialize colorama
 init()

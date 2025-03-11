@@ -2,16 +2,18 @@
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from click.testing import CliRunner
 import requests
+from click.testing import CliRunner
 
 # Add the parent directory to the path so we can import the CLI module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the CLI module
-from cli.runtime import cli, send_query, send_streaming_query, send_streaming_group_chat_query
+from cli.runtime import cli, send_query, send_streaming_group_chat_query, send_streaming_query
+
 
 class TestCLI:
     """Tests for the CLI functionality."""

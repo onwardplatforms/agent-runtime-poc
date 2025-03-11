@@ -2,13 +2,14 @@
 
 import os
 import sys
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 # Add the parent directory to the path so we can import the runtime module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from runtime.agent_runtime import AgentRuntime, AgentPlugin
+from runtime.agent_runtime import AgentPlugin, AgentRuntime
 
 # Test data
 TEST_AGENT_CONFIG = {

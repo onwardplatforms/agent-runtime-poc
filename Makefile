@@ -1,4 +1,4 @@
-.PHONY: start-hello start-goodbye start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake format
+.PHONY: start-hello start-goodbye start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake isort format
 
 # Default target
 all: start-all
@@ -285,7 +285,8 @@ help:
 	@echo "  make flake8        - Run flake8 linter"
 	@echo "  make mypy          - Run mypy type checker"
 	@echo "  make autoflake     - Remove unused imports and variables"
-	@echo "  make format        - Format code (currently runs autoflake)"
+	@echo "  make isort         - Sort imports according to PEP8"
+	@echo "  make format        - Format code (runs autoflake and isort)"
 
 # Run tests
 test:
@@ -326,5 +327,9 @@ autoflake:
 	@echo "Running autoflake to remove unused imports..."
 	autoflake --in-place --remove-all-unused-imports --remove-unused-variables --recursive runtime/ cli/ api/ tests/
 
-format: autoflake
+isort:
+	@echo "Running isort to sort imports..."
+	isort runtime/ cli/ api/ tests/
+
+format: autoflake isort
 	@echo "Code formatting complete." 

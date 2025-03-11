@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 
-import json
-import uuid
-import time
-import logging
-from typing import Dict, List, Any, Optional
 import asyncio
-import uvicorn
+import json
+import logging
+import time
+import uuid
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, Depends, HTTPException
+import uvicorn
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
-from runtime.agent_runtime import AgentRuntime, AgentTerminationStrategy, AgentGroupChat
+from runtime.agent_runtime import AgentGroupChat, AgentRuntime, AgentTerminationStrategy
 
 # Configure logging
 logging.basicConfig(
