@@ -7,7 +7,6 @@ import time
 import requests
 import re
 from typing import Dict, List, Any, Optional
-from pprint import pprint
 import click
 from colorama import init, Fore, Style
 

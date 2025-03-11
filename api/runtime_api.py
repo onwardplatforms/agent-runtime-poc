@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 
 import json
-import os
 import uuid
 import time
 import logging
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 import asyncio
-import argparse
 import uvicorn
 
-import semantic_kernel as sk
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field

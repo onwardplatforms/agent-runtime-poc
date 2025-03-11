@@ -1,4 +1,4 @@
-.PHONY: start-hello start-goodbye start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo
+.PHONY: start-hello start-goodbye start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake format
 
 # Default target
 all: start-all
@@ -279,6 +279,13 @@ help:
 	@echo "  make test-cov      - Run tests with coverage"
 	@echo "  make status        - Check the status of all components"
 	@echo "  make stop          - Stop all running components"
+	@echo ""
+	@echo "Code Quality Commands:"
+	@echo "  make lint          - Run all linters (flake8 and mypy)"
+	@echo "  make flake8        - Run flake8 linter"
+	@echo "  make mypy          - Run mypy type checker"
+	@echo "  make autoflake     - Remove unused imports and variables"
+	@echo "  make format        - Format code (currently runs autoflake)"
 
 # Run tests
 test:
@@ -302,4 +309,22 @@ demo:
 		-H "Content-Type: application/json" \
 		-d '{"messageId": "demo-msg-2", "conversationId": "demo-conv", "senderId": "demo", "recipientId": "goodbye-agent", "content": "Say goodbye in French", "timestamp": "2023-03-10T12:00:00Z", "type": 0}' | jq
 	@echo "\nTesting Runtime with both agents..."
-	./cli.py --group "hello-agent,goodbye-agent" --query "Say hello in Spanish and say goodbye in French" 
+	./cli.py --group "hello-agent,goodbye-agent" --query "Say hello in Spanish and say goodbye in French"
+
+# Code Quality Commands
+lint: flake8 mypy
+
+flake8:
+	@echo "Running flake8..."
+	flake8 runtime/ cli/ api/ tests/
+
+mypy:
+	@echo "Running mypy..."
+	mypy runtime/ cli/ api/ tests/
+
+autoflake:
+	@echo "Running autoflake to remove unused imports..."
+	autoflake --in-place --remove-all-unused-imports --remove-unused-variables --recursive runtime/ cli/ api/ tests/
+
+format: autoflake
+	@echo "Code formatting complete." 

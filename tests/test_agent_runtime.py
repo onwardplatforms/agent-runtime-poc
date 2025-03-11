@@ -3,7 +3,6 @@
 import os
 import sys
 import pytest
-import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 
 # Add the parent directory to the path so we can import the runtime module

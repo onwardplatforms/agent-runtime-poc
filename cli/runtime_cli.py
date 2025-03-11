@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import json
 import time
 import argparse
 import requests
-import re
 import logging
 from typing import Dict, List, Any, Optional
-from pprint import pprint
 from colorama import init, Fore, Style
 
 # Initialize colorama

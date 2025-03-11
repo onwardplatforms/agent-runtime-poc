@@ -6,20 +6,16 @@ import uuid
 import time
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Tuple, Set, Annotated
+from typing import Dict, List, Any, Optional
 import datetime
 import aiohttp
-import sys
-import importlib.util
 
 import semantic_kernel as sk
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
-from semantic_kernel.functions.kernel_arguments import KernelArguments
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
 from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 from semantic_kernel.contents.chat_history import ChatHistory
-import requests
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 
 # Configure logging
 logging.basicConfig(
@@ -277,7 +273,7 @@ class AgentRuntime:
                 
                 # Add the OpenAI chat completion service
                 logger.info("Adding OpenAI chat completion service")
-                chat_service = sk.connectors.ai.open_ai.OpenAIChatCompletion(
+                chat_service = OpenAIChatCompletion(
                     service_id="chat-gpt",
                     ai_model_id="gpt-3.5-turbo",
                     api_key=api_key
@@ -340,7 +336,7 @@ class AgentRuntime:
     
     async def process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False, max_agents: int = None) -> Dict[str, Any]:
         """Process a query using Semantic Kernel's function calling capabilities."""
-        start_time = time.time()
+        time.time()
         
         # Initialize conversation if not provided
         if not conversation_id:
