@@ -19,22 +19,35 @@ Each layer serves a specific purpose:
 - Runtime handles orchestration, routing, and conversation management
 - Clients provide natural language interfaces to the system
 
+The system features full end-to-end streaming support:
+- Real-time display of LLM responses as they're generated
+- Immediate visibility of agent calls and responses
+- Responsive user experience with token-by-token output
+
 ## Agent Call Visibility
 
 The system provides immediate visibility into which agents are being called using the `ƒ(x)` notation. When an agent is invoked, you'll see:
 
 ```
-> Say hello in Spanish
-ƒ(x) calling the [hello-agent] agent...
-¡Hola! ¿Cómo estás?
+you → Say hello in Spanish
+ƒ(x) calling hello-agent...
+ ↪ runtime → hello in Spanish
+ ↪ hello-agent → ¡Hola! ¿Cómo estás?
 
-> Say hello in Spanish and goodbye in French
-ƒ(x) calling the [hello-agent] agent...
-ƒ(x) calling the [goodbye-agent] agent...
-¡Hola! ¿Cómo estás? Au revoir et à bientôt!
+runtime → The Spanish greeting "¡Hola! ¿Cómo estás?" means "Hello! How are you?"
+
+you → Say hello in Spanish and goodbye in French
+ƒ(x) calling hello-agent...
+ ↪ runtime → hello in Spanish
+ ↪ hello-agent → ¡Hola! ¿Cómo estás?
+ƒ(x) calling goodbye-agent...
+ ↪ runtime → goodbye in French
+ ↪ goodbye-agent → Au revoir et à bientôt!
+
+runtime → In Spanish, you can say hello with "¡Hola! ¿Cómo estás?" and in French, you can say goodbye with "Au revoir et à bientôt!"
 ```
 
-This real-time visibility helps you understand how the system routes and processes queries.
+This real-time visibility with consistent formatting helps you understand how the system routes and processes queries.
 
 ## Testing
 
@@ -91,9 +104,9 @@ make interactive
 
 This launches the full system with a CLI interface. Try these examples:
 ```bash
-> Say hello in Spanish                                         # Direct query
-> group hello-agent,goodbye-agent "Greet in Spanish"          # Group chat
-> direct hello-agent "Generate a formal greeting in German"    # Agent-specific
+you → Say hello in Spanish                                         # Direct query
+you → group hello-agent,goodbye-agent "Greet in Spanish"          # Group chat
+you → direct hello-agent "Generate a formal greeting in German"    # Agent-specific
 ```
 
 ### Other Run Options
@@ -145,7 +158,9 @@ Available commands:
 
 ## Developer Documentation
 
-For technical details about agent invocation, see [DEVELOPER.md](DEVELOPER.md).
+For technical details about the architecture and implementation, see:
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and component details
+- [DEVELOPER.md](DEVELOPER.md) - Technical flows and implementation information
 
 ## Agent Runtime Implementation
 
@@ -154,8 +169,8 @@ The runtime uses Semantic Kernel to orchestrate agent interactions:
 1. **Agent Registration**: Agents are registered as Semantic Kernel functions
 2. **Function Calling**: Semantic Kernel determines which agents to call based on the query
 3. **Conversation History**: System maintains context using Semantic Kernel's ChatHistory
-4. **Streaming Support**: Both synchronous and streaming responses
-5. **Multiple Interfaces**: API and CLI access points
+4. **Streaming Support**: Full end-to-end streaming for responsive user experience
+5. **Multiple Interfaces**: API and CLI access points with consistent formatting
 
 ### Agent Configuration
 
@@ -173,7 +188,7 @@ Agents are configured in `agents.json`:
 ### API Endpoints
 
 Runtime API:
-- `POST /api/query` - Process queries
+- `POST /api/query` - Process queries (supports streaming)
 - `POST /api/group-chat` - Multi-agent coordination
 - `GET /api/conversations/{id}` - Chat history
 - `GET /api/agents` - List agents

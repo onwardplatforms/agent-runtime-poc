@@ -613,31 +613,38 @@ class AgentRuntime:
                 
                 debug_print("Using Semantic Kernel for function calling")
                 
-                # Get the final result
-                debug_print(f"DEBUG: Getting final result from chat service")
-                result = await chat_service.get_chat_message_contents(
+                # Get the final result - STREAMING VERSION
+                debug_print(f"DEBUG: Getting streaming result from chat service")
+                # Don't use await directly on an async generator
+                response_stream = chat_service.get_streaming_chat_message_content(
                     chat_history=chat_history,
                     settings=settings,
                     kernel=self.kernel
                 )
                 
-                # Extract the response content
-                debug_print(f"DEBUG: Extracting response content from result: {result}")
-                if hasattr(result, 'content'):
-                    response_content = result.content
-                elif hasattr(result, 'items') and len(result.items) > 0 and hasattr(result.items[0], 'text'):
-                    response_content = result.items[0].text
-                elif isinstance(result, list) and len(result) > 0:
-                    if hasattr(result[0], 'items') and len(result[0].items) > 0 and hasattr(result[0].items[0], 'text'):
-                        response_content = result[0].items[0].text
-                    elif hasattr(result[0], 'content'):
-                        response_content = result[0].content
-                    else:
-                        response_content = str(result[0])
-                else:
-                    response_content = str(result)
+                # Process each chunk of the response as it arrives
+                debug_print(f"DEBUG: Processing streaming response")
+                full_response_content = ""
+                chunks = []
                 
-                debug_print(f"DEBUG: Extracted response_content: {response_content}")
+                async for chunk in response_stream:
+                    if chunk:
+                        # Extract the chunk text
+                        chunk_text = str(chunk)
+                        debug_print(f"DEBUG: Received streaming chunk: '{chunk_text}'")
+                        full_response_content += chunk_text
+                        chunks.append(chunk)
+                        
+                        # Add each chunk to event queue for streaming to client
+                        debug_print(f"DEBUG: Putting chunk in event queue: '{chunk_text}'")
+                        await self.event_queue.put({
+                            "content": chunk_text
+                        })
+                        # Small sleep to ensure chunks are processed
+                        await asyncio.sleep(0.01)
+                
+                # Process the complete response
+                debug_print(f"DEBUG: Finished streaming, full response: {full_response_content}")
                 
                 # Get the agents that were used
                 global last_called_agent
@@ -653,7 +660,7 @@ class AgentRuntime:
                 debug_print(f"DEBUG: Adding assistant response to conversation history for {conversation_id}")
                 self.conversations[conversation_id].append({
                     "role": "assistant",
-                    "content": response_content,
+                    "content": full_response_content,
                     "timestamp": datetime.datetime.now().isoformat(),
                     "agents_used": agents_used
                 })
@@ -663,7 +670,7 @@ class AgentRuntime:
                 return {
                     "chunk": None,
                     "complete": True,
-                    "response": response_content,
+                    "response": full_response_content,
                     "conversation_id": conversation_id,
                     "processing_time": time.time() - start_time,
                     "agents_used": agents_used

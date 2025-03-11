@@ -127,9 +127,19 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                         
                         # Handle different types of chunks
                         if "content" in data:
-                            # Text content chunk - collect but don't display immediately
+                            # Text content chunk - display immediately as they arrive
                             chunk = data["content"]
                             if chunk:
+                                # Display chunk as it arrives (without newline)
+                                if not is_displaying_response:
+                                    # Start displaying the response
+                                    click.echo(f"\nruntime → ", nl=False)
+                                    is_displaying_response = True
+                                
+                                # Display the chunk without newline to create streaming effect
+                                click.echo(chunk, nl=False)
+                                sys.stdout.flush()  # Force output to display immediately
+                                
                                 # Add to accumulated response
                                 current_response += chunk
                                 complete_response += chunk
@@ -202,8 +212,11 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                             click.echo(f"\n{Fore.RED}Error parsing streaming response: {e}{Style.RESET_ALL}")
             
             # Display the final response
-            if complete_response:
+            if complete_response and not is_displaying_response:
                 click.echo(f"\nruntime → {complete_response.strip()}")
+            elif is_displaying_response:
+                # If we've been displaying chunks, just add a newline at the end
+                click.echo("")
             
             # Return the complete response
             return {
@@ -317,15 +330,19 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                         
                         # Handle different types of chunks
                         if "content" in data:
-                            # Text content chunk - display immediately
+                            # Text content chunk - display immediately as they arrive
                             chunk = data["content"]
                             if chunk and not chunk in ["Starting group chat streaming response...", "Processing with Semantic Kernel...", "Group chat streaming complete"]:
                                 if not is_displaying_response:
-                                    # Start a new response line
+                                    # Start displaying the response
+                                    click.echo(f"\nruntime → ", nl=False)
                                     is_displaying_response = True
                                 
-                                # Add to current response but don't display immediately
-                                # (will be displayed at the end as the runtime response)
+                                # Display the chunk without newline to create streaming effect
+                                click.echo(chunk, nl=False)
+                                sys.stdout.flush()  # Force output to display immediately
+                                
+                                # Add to accumulated response
                                 current_response += chunk
                         elif "chunk" in data:
                             # Skip internal status messages
