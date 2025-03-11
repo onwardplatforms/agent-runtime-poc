@@ -96,8 +96,22 @@ def list_agents() -> Dict[str, Any]:
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"{Fore.RED}Error listing agents: {e}{Style.RESET_ALL}")
-        return {"error": str(e)}
+        print(f"Error communicating with the runtime: {e}")
+        return {"agents": []}
+
+
+def display_agents():
+    """Display the list of available agents."""
+    agents_info = list_agents()
+    
+    if "agents" in agents_info and agents_info["agents"]:
+        print("\nAvailable Agents:")
+        for agent in agents_info["agents"]:
+            print(f"\n• {agent['name']} ({agent['id']})")
+            print(f"  {agent['description']}")
+        print("\n")
+    else:
+        print("\nNo agents available.\n")
 
 
 def check_runtime_status():
@@ -279,15 +293,7 @@ def interactive_mode():
             # List available agents
             elif user_input.lower() == "agents":
                 if runtime_available:
-                    agents = list_agents()
-                    if "agents" in agents:
-                        print(f"{Fore.CYAN}Available agents:{Style.RESET_ALL}")
-                        for agent in agents["agents"]:
-                            capabilities = ", ".join(agent.get("capabilities", []))
-                            print(f"  {Fore.YELLOW}{agent['id']}{Style.RESET_ALL} - {agent['name']}: {agent['description']}")
-                            print(f"    Capabilities: {capabilities}")
-                    else:
-                        print(f"{Fore.RED}Error retrieving agents: {agents.get('error', 'Unknown error')}{Style.RESET_ALL}")
+                    display_agents()
                 else:
                     print(f"{Fore.RED}Runtime is not available. Cannot list agents.{Style.RESET_ALL}")
 

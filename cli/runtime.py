@@ -103,6 +103,9 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
             current_response = ""
             current_agent_id = None
             current_agent_response = ""
+            
+            # Flag to track if we've shown the conversation header
+            conversation_header_shown = False
 
             # Process the streaming response
             for line in response.iter_lines():
@@ -136,7 +139,7 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                                 # Display chunk as it arrives (without newline)
                                 if not is_displaying_response:
                                     # Start displaying the response
-                                    click.echo("\nruntime → ", nl=False)
+                                    click.echo(f"\nruntime → ", nl=False)
                                     is_displaying_response = True
 
                                 # Display the chunk without newline to create streaming effect
@@ -183,28 +186,30 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                             agent_id = data["agent_call"]
                             current_agent_id = agent_id
                             current_agent_response = ""
-                            click.echo(f"\nƒ(x) calling {agent_id}...")
-
+                            
+                            # Show the conversation header if not already shown
+                            if not conversation_header_shown:
+                                click.echo(f"\ntalking with the agent(s):")
+                                conversation_header_shown = True
+                            
                             # Display the query sent to the agent, if available
                             if "agent_query" in data:
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ runtime → {data['agent_query']}{Style.RESET_ALL}")
+                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ runtime to {agent_id} → {data['agent_query']}{Style.RESET_ALL}")
 
                         # Handle agent responses
                         if "agent_response" in data and "agent_id" in data:
                             agent_id = data["agent_id"]
                             response_text = data["agent_response"]
                             if response_text:
-                                # Only update the current_agent_id if different, but don't print a duplicate call message
-                                # (The agent_call event should have already printed this)
+                                # Update the current agent ID if different
                                 if agent_id != current_agent_id:
                                     current_agent_id = agent_id
-                                    current_agent_response = ""
 
                                 # Append to current agent response
                                 current_agent_response += response_text
 
-                                # Display agent response with the indented format in gray
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ {agent_id} → {response_text}{Style.RESET_ALL}")
+                                # Display agent response with the conversational format
+                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ {agent_id} to runtime → {response_text}{Style.RESET_ALL}")
 
                         # Handle error
                         if "error" in data:
@@ -308,6 +313,9 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
             current_response = ""
             current_agent_id = None
             current_agent_response = ""
+            
+            # Flag to track if we've shown the conversation header
+            conversation_header_shown = False
 
             # Process the streaming response
             for line in response.iter_lines():
@@ -340,7 +348,7 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                             if chunk and chunk not in ["Starting group chat streaming response...", "Processing with Semantic Kernel...", "Group chat streaming complete"]:
                                 if not is_displaying_response:
                                     # Start displaying the response
-                                    click.echo("\nruntime → ", nl=False)
+                                    click.echo(f"\nruntime → ", nl=False)
                                     is_displaying_response = True
 
                                 # Display the chunk without newline to create streaming effect
@@ -382,28 +390,30 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                             agent_id = data["agent_call"]
                             current_agent_id = agent_id
                             current_agent_response = ""
-                            click.echo(f"\nƒ(x) calling {agent_id}...")
-
+                            
+                            # Show the conversation header if not already shown
+                            if not conversation_header_shown:
+                                click.echo(f"\ntalking with the agent(s):")
+                                conversation_header_shown = True
+                            
                             # Display the query sent to the agent, if available
                             if "agent_query" in data:
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ runtime → {data['agent_query']}{Style.RESET_ALL}")
+                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ runtime to {agent_id} → {data['agent_query']}{Style.RESET_ALL}")
 
                         # Handle agent responses
                         if "agent_response" in data and "agent_id" in data:
                             agent_id = data["agent_id"]
                             response_text = data["agent_response"]
                             if response_text:
-                                # Only update the current_agent_id if different, but don't print a duplicate call message
-                                # (The agent_call event should have already printed this)
+                                # Update the current agent ID if different
                                 if agent_id != current_agent_id:
                                     current_agent_id = agent_id
-                                    current_agent_response = ""
 
                                 # Append to current agent response
                                 current_agent_response += response_text
 
-                                # Display agent response with the indented format in gray
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ {agent_id} → {response_text}{Style.RESET_ALL}")
+                                # Display agent response with the conversational format
+                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ {agent_id} to runtime → {response_text}{Style.RESET_ALL}")
 
                         # Handle error
                         if "error" in data:
@@ -753,7 +763,7 @@ def agents():
     """List available agents."""
     agents_response = list_agents()
     if "error" not in agents_response:
-        click.echo("\nAvailable Agents:")
+        click.echo(f"\nAvailable Agents:")
         for agent in agents_response.get("agents", []):
             click.echo(f"  {agent['name']} ({agent['id']})")
             click.echo(f"    Description: {agent['description']}")
@@ -771,7 +781,7 @@ def status():
     if runtime_available:
         click.echo(f"Runtime is available at {RUNTIME_URL}")
     else:
-        click.echo("Runtime is not available.")
+        click.echo(f"Runtime is not available.")
 
 
 if __name__ == "__main__":

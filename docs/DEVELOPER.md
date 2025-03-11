@@ -190,7 +190,12 @@ The CLI implementation follows these key UX principles:
 1. **Consistent Formatting**
    - User inputs are always prefixed with "you → "
    - Runtime responses are prefixed with "runtime → "
-   - Agent calls use "ƒ(x) calling agent-id..." format
+   - Agent calls use a conversational format that shows messages between runtime and agents:
+     ```
+     talking with the agent(s):
+      ↪ runtime to agent-id → query
+      ↪ agent-id to runtime → response
+     ```
    - Agent queries and responses are indented with " ↪ " prefix
 
 2. **Real-time Feedback**

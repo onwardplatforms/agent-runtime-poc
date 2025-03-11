@@ -26,28 +26,27 @@ The system features full end-to-end streaming support:
 
 ## Agent Call Visibility
 
-The system provides immediate visibility into which agents are being called using the `ƒ(x)` notation. When an agent is invoked, you'll see:
+The system provides immediate visibility into the conversation between the runtime and agents. When an agent is invoked, you'll see:
 
 ```
 you → Say hello in Spanish
-ƒ(x) calling hello-agent...
- ↪ runtime → hello in Spanish
- ↪ hello-agent → ¡Hola! ¿Cómo estás?
+talking with the agent(s):
+ ↪ runtime to hello-agent → hello in Spanish
+ ↪ hello-agent to runtime → ¡Hola! ¿Cómo estás?
 
 runtime → The Spanish greeting "¡Hola! ¿Cómo estás?" means "Hello! How are you?"
 
 you → Say hello in Spanish and goodbye in French
-ƒ(x) calling hello-agent...
- ↪ runtime → hello in Spanish
- ↪ hello-agent → ¡Hola! ¿Cómo estás?
-ƒ(x) calling goodbye-agent...
- ↪ runtime → goodbye in French
- ↪ goodbye-agent → Au revoir et à bientôt!
+talking with the agent(s):
+ ↪ runtime to hello-agent → hello in Spanish
+ ↪ runtime to goodbye-agent → goodbye in French
+ ↪ goodbye-agent to runtime → Au revoir et à bientôt!
+ ↪ hello-agent to runtime → ¡Hola! ¿Cómo estás?
 
 runtime → In Spanish, you can say hello with "¡Hola! ¿Cómo estás?" and in French, you can say goodbye with "Au revoir et à bientôt!"
 ```
 
-This real-time visibility with consistent formatting helps you understand how the system routes and processes queries.
+This real-time visibility with a conversational format helps you understand the flow of information between the runtime and agents.
 
 ## Testing
 
@@ -180,7 +179,6 @@ Agents are configured in `agents.json`:
     "id": "hello-agent",
     "name": "Hello Agent",
     "description": "Generates greetings in different languages",
-    "capabilities": ["greeting", "hello_in_different_languages"],
     "endpoint": "http://localhost:5001/api/message"
 }
 ```

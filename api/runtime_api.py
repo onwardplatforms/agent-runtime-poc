@@ -72,7 +72,6 @@ class Agent(BaseModel):
     id: str
     name: str
     description: str
-    capabilities: List[str]
     endpoint: str
 
 
@@ -316,21 +315,20 @@ async def get_conversation(conversation_id: str, runtime: AgentRuntime = Depends
 
 @app.get("/api/agents")
 async def list_agents(runtime: AgentRuntime = Depends(get_runtime)):
-    """List all available agents and their capabilities."""
+    """List all available agents."""
     try:
         agents = runtime.get_all_agents()
-        result = []
-
-        for agent_id, agent in agents.items():
-            result.append({
-                "id": agent.id,
-                "name": agent.name,
-                "description": agent.description,
-                "capabilities": agent.capabilities,
-                "endpoint": agent.endpoint
-            })
-
-        return {"agents": result}
+        return {
+            "agents": [
+                {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "description": agent.description,
+                    "endpoint": agent.endpoint
+                }
+                for agent in agents.values()
+            ]
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing agents: {str(e)}")
 

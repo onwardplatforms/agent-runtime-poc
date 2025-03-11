@@ -1,6 +1,6 @@
 # Agent Runtime Architecture
 
-![Architecture Diagram](./assets/architecture.png)
+![Architecture Diagram](assets/architecture.png)
 
 ## Three-Tier Architecture
 
@@ -120,8 +120,12 @@ The system now features a more polished and responsive user interface:
 1. **Consistent Formatting**
    - User inputs are consistently preceded by "you → "
    - Runtime responses are preceded by "runtime → "
-   - Agent calls are marked with "ƒ(x) calling agent-id..."
-   - Agent responses show as " ↪ agent-id → response"
+   - Agent interactions are displayed in a conversational format showing exchanges:
+     ```
+     talking with the agent(s):
+      ↪ runtime to agent-id → query
+      ↪ agent-id to runtime → response
+     ```
 
 2. **Real-time Streaming**
    - All responses appear token by token as they're generated
@@ -163,4 +167,11 @@ The CLI interface (`runtime.py`) provides the following capabilities:
 The Makefile provides several ways to launch the CLI:
 - `make interactive` - One-command solution that checks/starts all required services
 - `make cli` - Starts only the CLI interface (assumes services are running)
-- `make runtime-cli` - Runs the runtime in the foreground with visible logs (for development) 
+- `make runtime-cli` - Runs the runtime in the foreground with visible logs (for development)
+
+- Agent interactions are displayed in a conversational format:
+  ```
+  talking with the agent(s):
+   ↪ runtime to agent-id → query
+   ↪ agent-id to runtime → response
+  ``` 

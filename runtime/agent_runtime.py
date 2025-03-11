@@ -48,7 +48,6 @@ class AgentPlugin:
         self.name = agent_config["name"]
         self.endpoint = agent_config["endpoint"]
         self.description = agent_config.get("description", f"Call the {self.name} agent")
-        self.capabilities = agent_config.get("capabilities", [])
         logger.debug(f"Initialized AgentPlugin: {self.id} with endpoint {self.endpoint}")
 
     def generate_request(self, content: str, sender_id: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
@@ -342,109 +341,77 @@ class AgentRuntime:
 
     async def process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False, max_agents: int = None) -> Dict[str, Any]:
         """Process a query using Semantic Kernel's function calling capabilities."""
-        time.time()
-
-        # Initialize conversation if not provided
-        if not conversation_id:
-            conversation_id = str(uuid.uuid4())
-
-        # Initialize conversation history if it doesn't exist
-        if conversation_id not in self.conversations:
-            self.conversations[conversation_id] = []
-
-        # Add user message to conversation history
-        self.conversations[conversation_id].append({
-            "role": "user",
-            "content": query,
-            "timestamp": datetime.datetime.now().isoformat()
-        })
-
-        # Create a chat history for the conversation
-        chat_history = ChatHistory()
-
-        # Add system message
-        system_message = """
-        You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
-
-        1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
-        2. EFFICIENCY: Only invoke agent functions when their specific capabilities are needed to address the query
-        3. DIRECT RESPONSE: Answer general knowledge questions, math problems, and common queries directly without calling agents
-        4. CLARITY: Provide coherent, unified responses that seamlessly integrate information from any agents you call
-        5. INTERACTION: If a user query is ambiguous or lacks necessary details, ask follow-up questions to clarify before proceeding
-        6. TRANSPARENCY: When you call an agent, explain to the user which agent you're calling and why
-
-        IMPORTANT GUIDELINES:
-        - Each agent function has specific, narrow capabilities - only call them for tasks within their expertise
-        - For general knowledge, factual information, calculations, or reasoning tasks, respond directly
-        - If uncertain whether an agent can help, err on the side of answering directly
-        - If a user query requires information you don't have, acknowledge limitations and ask for clarification
-        - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
-        """
-        chat_history.add_system_message(system_message)
-
-        # Add conversation history
-        for message in self.conversations[conversation_id]:
-            if message["role"] == "user":
-                chat_history.add_user_message(message["content"])
-            elif message["role"] == "assistant":
-                chat_history.add_assistant_message(message["content"])
-
-        # Track which agents were used
-        agents_used = []
-        execution_trace = []
-
         try:
-            # Get the chat service
-            chat_service = self.kernel.get_service("chat-gpt")
+            if conversation_id is None:
+                conversation_id = str(uuid.uuid4())
 
-            # Set up function calling behavior
-            settings = PromptExecutionSettings()
-            settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
+            # Create or get the conversation
+            if conversation_id not in self.conversations:
+                self.conversations[conversation_id] = []
 
-            # Add a note to only use functions when absolutely necessary
-            settings.extension_data = {"function_call_guidance": "only_when_necessary"}
+            # Add the user query to conversation history
+            self.conversations[conversation_id].append({
+                "role": "user",
+                "content": query
+            })
 
-            print("Using Semantic Kernel for function calling")
+            # Create a chat history for this conversation
+            chat_history = sk.ChatHistory()
+            
+            # Add existing conversation history to ChatHistory
+            for msg in self.conversations[conversation_id]:
+                if msg["role"] == "user":
+                    chat_history.add_user_message(msg["content"])
+                elif msg["role"] == "assistant":
+                    chat_history.add_assistant_message(msg["content"])
 
-            # Process the query with function calling
+            # Set up the chat completion settings with function calling
+            settings = sk.PromptExecutionSettings(
+                extension_data={
+                    "max_tokens": 2000,
+                    "temperature": 0.7,
+                    "function_call": "auto" if max_agents is None else {"name": "call_agent"},
+                    "tools": self._get_function_definitions()
+                }
+            )
+
+            # Get the service
+            chat_service = self.kernel.get_service("chat-completion")
+
+            # Prompt guidance for the LLM - updated to focus on description rather than capabilities
+            system_message = """
+            You are an AI assistant that helps users by routing queries to specialized external agents.
+            
+            GUIDELINES:
+            1. COORDINATION: Analyze user queries to determine if they require specialized agent expertise
+            2. EFFICIENCY: Only invoke agent functions when their specific expertise is needed to address the query
+            3. DIRECT: If you can answer a question directly, do so without calling an agent
+            
+            AGENT FUNCTION USAGE:
+            - Each agent function has specific, narrow expertise - only call them for tasks within their domain
+            - Do NOT invoke agent functions for general knowledge, math, coding, or reasoning tasks
+            - Base your decision on the agent description, not just the name
+            
+            Always respond in a helpful, conversational tone.
+            """
+            
+            chat_history.add_system_message(system_message)
+            
+            # Get completion
             result = await chat_service.get_chat_message_contents(
                 chat_history=chat_history,
                 settings=settings,
                 kernel=self.kernel
             )
 
-            # Extract the response content
-            # Handle different result formats
-            if hasattr(result, 'content'):
-                response_content = result.content
-            elif hasattr(result, 'items') and len(result.items) > 0 and hasattr(result.items[0], 'text'):
-                response_content = result.items[0].text
-            elif isinstance(result, list) and len(result) > 0:
-                if hasattr(result[0], 'items') and len(result[0].items) > 0 and hasattr(result[0].items[0], 'text'):
-                    response_content = result[0].items[0].text
-                elif hasattr(result[0], 'content'):
-                    response_content = result[0].content
-                else:
-                    response_content = str(result[0])
-            else:
-                response_content = str(result)
+            # Extract the content from the result
+            response_content = result.content
 
-            logger.debug(f"Extracted response content: {response_content[:50]}...")
-
-            # Check if any function calls were made
-            function_calls = []
-            if hasattr(result, 'function_calls'):
-                function_calls = result.function_calls
-            elif isinstance(result, list) and len(result) > 0 and hasattr(result[0], 'function_calls'):
-                function_calls = result[0].function_calls
-
-            if function_calls:
-                for function_call in function_calls:
-                    function_name = function_call.name
-                    agent_id = function_name.split('-')[0].replace('_', '-')
-                    agents_used.append(agent_id)
-                    execution_trace.append(f"Called {agent_id} with query: {query}")
-                    logger.debug(f"Function call: {function_name} with args: {function_call.arguments}")
+            # Add the assistant response to conversation history
+            self.conversations[conversation_id].append({
+                "role": "assistant",
+                "content": response_content
+            })
 
             # Create the response message
             response_message = {
@@ -454,19 +421,8 @@ class AgentRuntime:
                 "recipientId": "user",
                 "content": response_content,
                 "timestamp": datetime.datetime.now().isoformat(),
-                "type": "Text",
-                "execution_trace": execution_trace if verbose else [],
-                "agents_used": agents_used  # Always include agents_used
+                "type": "Text"
             }
-
-            # Add to conversation history
-            self.conversations[conversation_id].append({
-                "role": "assistant",
-                "content": response_content,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "execution_trace": execution_trace if verbose else [],
-                "agents_used": agents_used  # Always include agents_used
-            })
 
             return response_message
 
