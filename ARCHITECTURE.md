@@ -2,7 +2,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                            Client Applications                           │
+│                            Client Applications                          │
 │                                                                         │
 │  ┌───────────────┐                                   ┌───────────────┐  │
 │  │  Command-line │                                   │   Web Client  │  │
@@ -23,33 +23,44 @@
 │  ┌───────────────────────────────┼─────────────────────────────────┐    │
 │  │                               │                                 │    │
 │  │                               ▼                                 │    │
-│  │  ┌────────────────────────────────────────────────────────┐    │    │
-│  │  │              Semantic Kernel Core                      │    │    │
-│  │  │                                                        │    │    │
-│  │  │  ┌──────────────────┐      ┌─────────────────────┐    │    │    │
-│  │  │  │  Agent Plugins   │      │ Function Calling    │    │    │    │
-│  │  │  └──────────────────┘      └─────────────────────┘    │    │    │
-│  │  │                                                        │    │    │
-│  │  │  ┌──────────────────┐      ┌─────────────────────┐    │    │    │
-│  │  │  │  OpenAI Service  │      │ Conversation Store  │    │    │    │
-│  │  │  └──────────────────┘      └─────────────────────┘    │    │    │
-│  │  └────────────────────────────────────────────────────────┘    │    │
-│  │                                                                 │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-│                                  │                                      │
-│                                  │                                      │
-└──────────────────────────────────┼──────────────────────────────────────┘
-                                   │                                       
-                                   │                                       
-                                   │                                       
-┌──────────────────────────────────┼──────────────────────────────────────┐
-│                                  │                                      │
-│  ┌────────────────┐    ┌─────────┴──────────┐    ┌─────────────────┐   │
-│  │                │    │                    │    │                 │   │
-│  │  Hello Agent   │◄───┤  agents.json      ├───►│  Goodbye Agent  │   │
-│  │  (Python/Flask)│    │  Configuration    │    │  (.NET)         │   │
-│  │                │    │                    │    │                 │   │
-│  └────────────────┘    └────────────────────┘    └─────────────────┘   │
+│  │  ┌────────────────────────────────────────────────────────┐     │    │
+│  │  │              Semantic Kernel Core                      │     │    │
+│  │  │                                                        │     │    │
+│  │  │  ┌──────────────────┐      ┌─────────────────────┐     │     │    │
+│  │  │  │  Agent Plugins   │      │ Function Calling    │     │     │    │
+│  │  │  └──────────────────┘      └─────────────────────┘     │     │    │
+│  │  │                                                        │     │    │
+│  │  │  ┌──────────────────┐      ┌─────────────────────┐     │     │    │
+│  │  │  │  OpenAI Service  │      │ Conversation Store  │     │     │    │
+│  │  │  └──────────────────┘      └─────────────────────┘     │     │    │
+│  │  └────────────────────────────────────────────────────────┘     │    │
+│  │                               ▲                                 │    │
+│  │                               │                                 │    │
+│  │  ┌────────────────────────────┴────────────────────────────┐    │    │
+│  │  │                    Agent Registry                       │    │    │
+│  │  │                                                         │    │    │
+│  │  │  ┌───────────────┐  ┌──────────────┐ ┌───────────────┐  │    │    │
+│  │  │  │ Agent Metadata│  │ Agent Groups │ │Runtime Configs│  │    │    │
+│  │  │  └───────────────┘  └──────────────┘ └───────────────┘  │    │    │
+│  │  │           ▲                  ▲               ▲          │    │    │
+│  │  └───────────┼──────────────────┼───────────────┼──────────┘    │    │
+│  │              │                  │               │               │    │
+│  └──────────────┼──────────────────┼───────────────┼──────────────-┘    │
+│                 │                  │               │                    │
+│                 │                  │               │                    │
+└─────────────────┼──────────────────┼───────────────┼────────────────────┘
+                  │                  │               │                     
+                  │                  │               │                     
+                  │                  │               │                     
+┌─────────────────┼──────────────────┼───────────────┼────────────────────┐
+│                 │                  │               │                    │
+│  ┌────────────────┐    ┌───────────┴─────────┐    ┌─────────────────┐   │
+│  │                │    │                     │    │                 │   │
+│  │  Hello Agent   │    │   Agent Registry    │    │  Goodbye Agent  │   │
+│  │  (Python/Flask)│    │    Data Store       │    │  (.NET)         │   │
+│  │                │    │  (replacing simple  │    │                 │   │
+│  │                │    │    agents.json)     │    │                 │   │
+│  └────────────────┘    └─────────────────────┘    └─────────────────┘   │
 │                                                                         │
 │                          Standalone Agents                              │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -80,6 +91,11 @@ The system is built with a clear separation of concerns across three distinct la
   - Manages agent registration and invocation
   - Implements streaming for real-time LLM output
   - Maintains conversation history and context
+- **Agent Registry**: Central repository of agent information and configurations
+  - Stores agent metadata, capabilities, and endpoints
+  - Defines agent groups for common combinations
+  - Maintains runtime configurations and policies
+  - Enables dynamic agent discovery and orchestration
 
 ## Streaming Implementation
 
@@ -125,11 +141,27 @@ The streaming implementation ensures that:
   - **Function Calling**: Uses Semantic Kernel's function calling capabilities to determine which agent(s) to call
   - **OpenAI Service**: Handles LLM interactions with streaming support
   - **Conversation Store**: Maintains conversation history using Semantic Kernel's ChatHistory
+- **Agent Registry**: 
+  - **Agent Metadata Repository**: Stores detailed information about each agent
+    - Capabilities, supported parameters, and interaction patterns
+    - Version information and status tracking
+    - Access control and authentication requirements
+  - **Agent Groups Management**: Defines and manages collections of agents
+    - Preconfigured combinations for specific tasks
+    - Coordination patterns between complementary agents
+    - Parallel vs. sequential execution policies
+  - **Runtime Configuration Store**: Centralized configuration management
+    - Environment-specific settings and connection details
+    - Scaling parameters and resource allocation settings
+    - LLM provider configurations and fallback strategies
 
 ### Standalone Agents
 - **Hello Agent**: Python/Flask-based agent for greetings
 - **Goodbye Agent**: .NET-based agent for farewells
-- **agents.json**: Configuration file that defines available agents and their capabilities
+- **Agent Registry Data Store**: Central repository that replaces the simple agents.json file
+  - Provides a structured and queryable data store for agent information
+  - Supports dynamic agent registration and discovery
+  - Enables more sophisticated orchestration patterns
 
 ## Message Flow
 
