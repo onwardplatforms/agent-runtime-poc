@@ -1,4 +1,7 @@
 {
+    "settings": {
+        "enable_streaming": true
+    },
     "agents": [
         {
             "id": "hello-agent",

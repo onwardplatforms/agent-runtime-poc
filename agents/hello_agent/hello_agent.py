@@ -29,8 +29,6 @@ def receive_message():
     """Endpoint to receive messages"""
     message = request.json
     
-    print(f"Received message: {message}")
-    
     if not message:
         return jsonify({"error": "No message provided"}), 400
     
@@ -107,6 +105,13 @@ def generate_greeting(language=None):
         print(f"Error generating greeting: {e}")
         return f"Hello! (Sorry, I couldn't generate a greeting in {language if language else 'English'})"
 
-if __name__ == '__main__':
-    print(f"Starting Hello Agent with ID: {AGENT_ID}")
-    app.run(host='0.0.0.0', port=5001) 
+if __name__ == "__main__":
+    print("Starting Hello Agent with ID:", AGENT_ID)
+    
+    # Disable Flask access logs
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    
+    # Run the Flask app
+    app.run(host="0.0.0.0", port=5001) 

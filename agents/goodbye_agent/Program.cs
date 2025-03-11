@@ -29,7 +29,7 @@ if (args.Contains("--verbose") || args.Contains("-v"))
 }
 else
 {
-    builder.Logging.SetMinimumLevel(LogLevel.Warning);
+    builder.Logging.SetMinimumLevel(LogLevel.Error);
 }
 
 // Add OpenAI client

@@ -9,6 +9,8 @@ import logging
 from typing import Dict, List, Any, Optional, Tuple, Set, Annotated
 import datetime
 import aiohttp
+import sys
+import importlib.util
 
 import semantic_kernel as sk
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
@@ -22,12 +24,22 @@ import requests
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.WARNING  # Set a default level
+    level=logging.ERROR  # Change from WARNING to ERROR
 )
 logger = logging.getLogger("agent_runtime")
 
+# Debug flag - set to False by default
+DEBUG = os.environ.get("AGENT_RUNTIME_DEBUG", "false").lower() == "true"
+print(f"Agent Runtime DEBUG mode: {DEBUG}, env var: {os.environ.get('AGENT_RUNTIME_DEBUG', 'not set')}")
+
+def debug_print(message: str):
+    """Print debug messages only if DEBUG is True."""
+    if DEBUG:
+        print(message)
+
 # Track the last called agent
 last_called_agent = None
+last_agent_response = None  # Added to track the agent response for streaming
 
 class AgentPlugin:
     """A plugin that represents an agent in the Semantic Kernel."""
@@ -71,12 +83,19 @@ class AgentPlugin:
     ) -> str:
         """Call the agent with the given query."""
         global last_called_agent
+        global last_agent_response
         
         # Track this agent call
         last_called_agent = self.id
+        last_agent_response = None  # Reset the response
         
-        # Print the agent call to stdout for immediate visibility
-        print(f"\nƒ(x) calling the [{self.id}] agent...")
+        # Emit an agent_call event immediately (for streaming clients)
+        # Skip the direct print to avoid duplicated output
+        if hasattr(self, '_event_queue') and self._event_queue is not None:
+            await self._event_queue.put({
+                "agent_call": self.id,
+                "agent_query": query  # Include the query being sent to the agent
+            })
         
         logger.debug(f"Calling agent {self.id} with query: {query}")
         try:
@@ -87,8 +106,20 @@ class AgentPlugin:
                 async with session.post(self.endpoint, json=request) as response:
                     if response.status == 200:
                         result = await response.json()
-                        logger.debug(f"Received response from {self.id}: {result.get('content', '')[:50]}...")
-                        return result.get("content", "No response from agent")
+                        response_content = result.get("content", "No response from agent")
+                        logger.debug(f"Received response from {self.id}: {response_content[:50]}...")
+                        
+                        # Store the response for streaming
+                        last_agent_response = response_content
+                        
+                        # Emit the agent response event immediately (for streaming clients)
+                        if hasattr(self, '_event_queue') and self._event_queue is not None:
+                            await self._event_queue.put({
+                                "agent_id": self.id,
+                                "agent_response": response_content
+                            })
+                        
+                        return response_content
                     else:
                         error_text = await response.text()
                         logger.error(f"Error calling agent {self.id}: {response.status} - {error_text}")
@@ -201,6 +232,8 @@ class AgentRuntime:
         self.conversations = {}
         self.kernel = None
         self.verbose = False
+        self.enable_streaming = False  # Default to False
+        self.event_queue = None  # Initialize as None, will create when streaming is used
         
         # If config_path is not provided, use the default path
         if config_path is None:
@@ -218,10 +251,14 @@ class AgentRuntime:
             with open(config_path, "r") as f:
                 config = json.load(f)
                 
+            # Load settings if available
+            if "settings" in config:
+                settings = config["settings"]
+                self.enable_streaming = settings.get("enable_streaming", False)
+                
             for agent_config in config.get("agents", []):
                 agent_id = agent_config["id"]
                 self.agents[agent_id] = AgentPlugin(agent_config)
-                print(f"Loaded agent: {agent_config['name']} ({agent_id})")
         except Exception as e:
             print(f"Error loading agent configuration: {e}")
     
@@ -465,30 +502,72 @@ class AgentRuntime:
 
     async def stream_process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False):
         """Stream the processing of a query, yielding chunks of the response."""
+        debug_print(f"DEBUG: stream_process_query called with query: {query}, conversation_id: {conversation_id}")
         start_time = time.time()
         
+        # Create an event queue for this streaming session
+        self.event_queue = asyncio.Queue()
+        self._query_processed = False
+        
+        # Set event queue on agents temporarily
+        for agent in self.agents.values():
+            agent._event_queue = self.event_queue
+            
         # Initialize conversation if not provided
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
+            debug_print(f"DEBUG: Generated new conversation_id: {conversation_id}")
+            
+        # Initialize conversation dictionary if it doesn't exist
+        if conversation_id not in self.conversations:
+            debug_print(f"DEBUG: Initializing new conversation dictionary for {conversation_id}")
             self.conversations[conversation_id] = []
         
         # Add user query to conversation history
+        debug_print(f"DEBUG: Adding user query to conversation history for {conversation_id}")
         self.conversations[conversation_id].append({
             "role": "user",
             "content": query,
             "timestamp": datetime.datetime.now().isoformat()
         })
         
+        # Create a background task to process the query
+        query_task = asyncio.create_task(self._process_query_with_events(query, conversation_id, verbose))
+        
+        # Yield the events from the queue as they arrive
+        while not query_task.done() or not self.event_queue.empty():
+            try:
+                # Try to get an event from the queue with a small timeout
+                event = await asyncio.wait_for(self.event_queue.get(), 0.1)
+                debug_print(f"DEBUG: Yielding event: {event}")
+                yield event
+                self.event_queue.task_done()
+            except asyncio.TimeoutError:
+                # No event available, check if query task is done
+                if query_task.done():
+                    # Get the result from the query task
+                    result = query_task.result()
+                    if result:
+                        debug_print(f"DEBUG: Query task complete with result: {result}")
+                        yield result
+                    break
+        
+        # Cleanup
+        for agent in self.agents.values():
+            agent._event_queue = None
+        self._query_processed = True
+        debug_print(f"DEBUG: Stream processing complete in {time.time() - start_time:.2f}s")
+        
+    async def _process_query_with_events(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False):
+        """Process a query and emit events along the way."""
+        debug_print(f"DEBUG: _process_query_with_events called with query: {query}, conversation_id: {conversation_id}")
+        start_time = time.time()
+        
         # Try to use Semantic Kernel for function calling if available
         try:
             if self.kernel:
-                # Yield a status update
-                yield {
-                    "chunk": "Processing with Semantic Kernel...",
-                    "complete": False
-                }
-                
-                # Create a chat history for the conversation
+                # Create a chat history for this conversation
+                debug_print(f"DEBUG: Creating chat history for conversation")
                 chat_history = ChatHistory()
                 
                 # Add system message
@@ -509,9 +588,11 @@ class AgentRuntime:
                 - If a user query requires information you don't have, acknowledge limitations and ask for clarification
                 - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
                 """
+                debug_print(f"DEBUG: Adding system message to chat history")
                 chat_history.add_system_message(system_message)
                 
                 # Add conversation history
+                debug_print(f"DEBUG: Adding conversation history to chat history")
                 for message in self.conversations[conversation_id]:
                     if message["role"] == "user":
                         chat_history.add_user_message(message["content"])
@@ -519,63 +600,21 @@ class AgentRuntime:
                         chat_history.add_assistant_message(message["content"])
                 
                 # Get the chat service
+                debug_print(f"DEBUG: Getting chat service from kernel")
                 chat_service = self.kernel.get_service("chat-gpt")
                 
                 # Set up function calling behavior
+                debug_print(f"DEBUG: Setting up function calling behavior")
                 settings = PromptExecutionSettings()
                 settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
                 
                 # Add a note to only use functions when absolutely necessary
                 settings.extension_data = {"function_call_guidance": "only_when_necessary"}
                 
-                print("Using Semantic Kernel for function calling")
-                
-                # Get the streaming content
-                streaming_content = chat_service.get_streaming_chat_message_contents(
-                    chat_history=chat_history,
-                    settings=settings,
-                    kernel=self.kernel
-                )
-                
-                # Check if it's an async iterator or a coroutine
-                if hasattr(streaming_content, '__aiter__'):
-                    # It's an async iterator, use async for
-                    async for chunk in streaming_content:
-                        # Extract content from the chunk
-                        if hasattr(chunk, 'content') and chunk.content:
-                            yield {
-                                "chunk": chunk.content,
-                                "complete": False
-                            }
-                else:
-                    # It's a coroutine, await it and then process
-                    try:
-                        result_chunks = await streaming_content
-                        if isinstance(result_chunks, list):
-                            # If it returns a list of chunks
-                            for chunk in result_chunks:
-                                if hasattr(chunk, 'content') and chunk.content:
-                                    yield {
-                                        "chunk": chunk.content,
-                                        "complete": False
-                                    }
-                        elif hasattr(result_chunks, 'content') and result_chunks.content:
-                            # If it returns a single result
-                            yield {
-                                "chunk": result_chunks.content,
-                                "complete": False
-                            }
-                    except Exception as e:
-                        print(f"Error awaiting streaming content: {e}")
-                        yield {
-                            "chunk": f"Error processing query: {e}",
-                            "complete": True,
-                            "error": f"Error processing query: {e}"
-                        }
-                        # Skip the rest of the processing
-                        return
+                debug_print("Using Semantic Kernel for function calling")
                 
                 # Get the final result
+                debug_print(f"DEBUG: Getting final result from chat service")
                 result = await chat_service.get_chat_message_contents(
                     chat_history=chat_history,
                     settings=settings,
@@ -583,6 +622,7 @@ class AgentRuntime:
                 )
                 
                 # Extract the response content
+                debug_print(f"DEBUG: Extracting response content from result: {result}")
                 if hasattr(result, 'content'):
                     response_content = result.content
                 elif hasattr(result, 'items') and len(result.items) > 0 and hasattr(result.items[0], 'text'):
@@ -597,14 +637,20 @@ class AgentRuntime:
                 else:
                     response_content = str(result)
                 
+                debug_print(f"DEBUG: Extracted response_content: {response_content}")
+                
                 # Get the agents that were used
                 global last_called_agent
+                global last_agent_response
                 agents_used = []
                 if last_called_agent:
+                    debug_print(f"DEBUG: Adding last_called_agent to agents_used: {last_called_agent}")
                     agents_used.append(last_called_agent)
                     last_called_agent = None  # Reset for next query
+                    last_agent_response = None  # Reset the response
                 
                 # Add to conversation history
+                debug_print(f"DEBUG: Adding assistant response to conversation history for {conversation_id}")
                 self.conversations[conversation_id].append({
                     "role": "assistant",
                     "content": response_content,
@@ -612,8 +658,9 @@ class AgentRuntime:
                     "agents_used": agents_used
                 })
                 
-                # Yield the complete response
-                yield {
+                # Return the complete response
+                debug_print(f"DEBUG: Returning complete response")
+                return {
                     "chunk": None,
                     "complete": True,
                     "response": response_content,
@@ -623,23 +670,11 @@ class AgentRuntime:
                 }
             else:
                 # Kernel not available
-                error_message = "Semantic Kernel is not available. Please initialize the kernel first."
-                yield {
-                    "chunk": error_message,
-                    "complete": True,
-                    "error": error_message
-                }
+                debug_print("DEBUG: Semantic Kernel not available")
+                return {"error": "Semantic Kernel not available for processing"}
         except Exception as e:
-            # Handle any errors
-            error_message = f"Error processing query: {str(e)}"
-            print(f"Error in stream_process_query: {e}")
-            
-            # Yield the error
-            yield {
-                "chunk": error_message,
-                "complete": True,
-                "error": error_message
-            }
+            debug_print(f"Error in processing query: {e}")
+            return {"error": f"Error processing query: {e}"}
 
 async def main():
     """Main function to demonstrate the agent runtime."""

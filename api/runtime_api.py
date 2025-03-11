@@ -21,10 +21,10 @@ from runtime.agent_runtime import AgentRuntime, AgentTerminationStrategy, AgentG
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.WARNING  # Set a default level
+    level=logging.ERROR  # Change from WARNING to ERROR
 )
 logger = logging.getLogger("runtime_api")
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.ERROR)
 
 app = FastAPI(title="Agent Runtime API", version="0.3.0")
 
@@ -95,7 +95,10 @@ async def process_query(query: Query, runtime: AgentRuntime = Depends(get_runtim
     logger.info(f"Received query: {query.query}")
     
     try:
-        if query.stream:
+        # Check if streaming is requested or enabled globally
+        use_streaming = query.stream or runtime.enable_streaming
+        
+        if use_streaming:
             logger.debug("Streaming response requested")
             return StreamingResponse(
                 stream_query_response(query, runtime),
@@ -118,30 +121,72 @@ async def process_query(query: Query, runtime: AgentRuntime = Depends(get_runtim
 
 async def stream_query_response(query: Query, runtime: AgentRuntime):
     """Stream the response to a query."""
-    logger.debug(f"Starting streaming response for query: {query.query}")
+    logger.info(f"Starting streaming response for query: {query.query}")
     
     try:
+        # Send an initial message to confirm streaming has started
+        logger.debug("Sending initial streaming message")
+        yield f"data: {json.dumps({'chunk': 'Starting streaming response...', 'complete': False})}\n\n"
+        
+        # Log the streaming process
+        logger.debug(f"Starting stream_process_query with conversation_id: {query.conversation_id}")
+        
+        # Create a counter for chunks
+        chunk_counter = 0
+        
+        # Set response flush interval to ensure real-time updates
+        flush_interval = 0.05  # 50ms
+        last_flush_time = time.time()
+        
         async for chunk in runtime.stream_process_query(
             query=query.query,
             conversation_id=query.conversation_id,
             verbose=query.verbose
         ):
-            logger.debug(f"Streaming chunk: {chunk[:50] if isinstance(chunk, str) else 'non-string chunk'}...")
+            chunk_counter += 1
+            logger.debug(f"Streaming chunk #{chunk_counter}: {chunk if isinstance(chunk, str) else str(chunk)[:100]}...")
+            
+            # Format and send the chunk
             if isinstance(chunk, str):
+                # If it's a string, wrap it in a content object
+                logger.debug(f"Yielding string chunk #{chunk_counter}")
                 yield f"data: {json.dumps({'content': chunk})}\n\n"
             else:
+                # If it's an object, send it as is
+                logger.debug(f"Yielding object chunk #{chunk_counter}")
                 yield f"data: {json.dumps(chunk)}\n\n"
+            
+            # Flush data more frequently for agent calls/responses
+            current_time = time.time()
+            if 'agent_call' in chunk or 'agent_response' in chunk or (current_time - last_flush_time > flush_interval):
+                await asyncio.sleep(0)  # Yield control to ensure data is flushed
+                last_flush_time = current_time
         
+        # Send a final message to confirm streaming is complete
+        logger.debug("Sending streaming complete message")
+        yield f"data: {json.dumps({'chunk': 'Streaming complete', 'complete': True})}\n\n"
+        
+        logger.debug("Sending [DONE] marker")
         yield "data: [DONE]\n\n"
     except Exception as e:
         logger.exception(f"Error streaming response: {e}")
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
         yield "data: [DONE]\n\n"
 
-@app.post("/api/group-chat", response_model=Message)
+@app.post("/api/group-chat")
 async def group_chat(query: GroupChatQuery, runtime: AgentRuntime = Depends(get_runtime)):
     """Process a user query using a group chat of agents."""
     try:
+        # Check if streaming is requested or enabled globally
+        use_streaming = query.stream or runtime.enable_streaming
+        
+        if use_streaming:
+            logger.debug("Streaming group chat response requested")
+            return StreamingResponse(
+                stream_group_chat_response(query, runtime),
+                media_type="text/event-stream"
+            )
+        
         # Create a group chat with specified agents
         group_chat = AgentGroupChat(
             agents=[runtime.get_agent_by_id(agent_id) for agent_id in query.agent_ids 
@@ -161,6 +206,84 @@ async def group_chat(query: GroupChatQuery, runtime: AgentRuntime = Depends(get_
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing group chat: {str(e)}")
+
+async def stream_group_chat_response(query: GroupChatQuery, runtime: AgentRuntime):
+    """Stream the response to a group chat query."""
+    logger.debug(f"Starting streaming group chat response for query: {query.query}")
+    
+    try:
+        # Send an initial message to confirm streaming has started
+        yield f"data: {json.dumps({'chunk': 'Starting group chat streaming response...', 'complete': False})}\n\n"
+        
+        # Create a group chat with specified agents
+        group_chat = AgentGroupChat(
+            agents=[runtime.get_agent_by_id(agent_id) for agent_id in query.agent_ids 
+                   if runtime.get_agent_by_id(agent_id) is not None] 
+                   if query.agent_ids else list(runtime.get_all_agents().values()),
+            termination_strategy=AgentTerminationStrategy(max_iterations=query.max_iterations)
+        )
+        
+        # Set up event queue for the group chat
+        # This is a temporary approach until the group chat is fully integrated with streaming
+        runtime.event_queue = asyncio.Queue()
+        
+        # Set event queue on agents temporarily
+        for agent in runtime.agents.values():
+            agent._event_queue = runtime.event_queue
+        
+        # Set response flush interval to ensure real-time updates
+        flush_interval = 0.05  # 50ms
+        last_flush_time = time.time()
+        
+        # Process the query through the group chat (in background task)
+        process_task = asyncio.create_task(group_chat.process_query(
+            query.query,
+            user_id=query.user_id,
+            conversation_id=query.conversation_id,
+            verbose=query.verbose
+        ))
+        
+        # Process events as they come in
+        while not process_task.done() or not runtime.event_queue.empty():
+            try:
+                # Try to get an event from the queue
+                event = await asyncio.wait_for(runtime.event_queue.get(), 0.1)
+                logger.debug(f"Got event from queue: {event}")
+                
+                # Send the event to the client
+                yield f"data: {json.dumps(event)}\n\n"
+                runtime.event_queue.task_done()
+                
+                # Flush data more frequently for agent calls/responses
+                current_time = time.time()
+                if 'agent_call' in event or 'agent_response' in event or (current_time - last_flush_time > flush_interval):
+                    await asyncio.sleep(0)  # Yield control to ensure data is flushed
+                    last_flush_time = current_time
+            except asyncio.TimeoutError:
+                # No event available, check if process task is done
+                if process_task.done():
+                    # Get the result
+                    response = process_task.result()
+                    break
+        
+        # Cleanup
+        for agent in runtime.agents.values():
+            agent._event_queue = None
+        
+        # Stream the final response content
+        if response and "content" in response:
+            yield f"data: {json.dumps({'content': response['content']})}\n\n"
+        
+        # Send the complete response
+        yield f"data: {json.dumps({'chunk': None, 'complete': True, 'response': response.get('content', ''), 'agents_used': response.get('agents_used', [])})}\n\n"
+        
+        # Send a final message to confirm streaming is complete
+        yield f"data: {json.dumps({'chunk': 'Group chat streaming complete', 'complete': True})}\n\n"
+        yield "data: [DONE]\n\n"
+    except Exception as e:
+        logger.exception(f"Error streaming group chat response: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
 async def get_conversation(conversation_id: str, runtime: AgentRuntime = Depends(get_runtime)):
