@@ -64,7 +64,7 @@ make test-cov
 make demo
 ```
 
-For detailed information about testing, see [TESTING.md](TESTING.md).
+For detailed information about testing, see [TESTING.md](docs/TESTING.md).
 
 ## Prerequisites
 
@@ -159,8 +159,8 @@ Available commands:
 ## Developer Documentation
 
 For technical details about the architecture and implementation, see:
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and component details
-- [DEVELOPER.md](DEVELOPER.md) - Technical flows and implementation information
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture and component details
+- [DEVELOPER.md](docs/DEVELOPER.md) - Technical flows and implementation information
 
 ## Agent Runtime Implementation
 
@@ -197,4 +197,4 @@ Individual agent endpoints:
 - Hello Agent: `http://localhost:5001/api/message`
 - Goodbye Agent: `http://localhost:5002/api/message`
 
-For complete API documentation, see [API.md](API.md).
+For complete API documentation, see [API.md](docs/API.md).
