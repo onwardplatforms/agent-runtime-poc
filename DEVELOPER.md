@@ -33,6 +33,39 @@ This section explains the technical flow of how agent invocation works in the sy
    - The `agents_used` field in the response contains the list of agents that were called
    - The response is returned to the CLI, which displays it to the user
 
+## Testing
+
+The Agent Runtime system includes a comprehensive test suite that covers all major components. For detailed information about testing, see [TESTING.md](TESTING.md).
+
+### Test Structure Overview
+
+- **Unit Tests**: Tests for individual classes and methods
+- **Integration Tests**: Tests for interactions between components
+- **API Tests**: Tests for the FastAPI endpoints
+- **CLI Tests**: Tests for the command-line interface
+
+### Key Testing Concepts
+
+1. **Mocking Semantic Kernel**: The tests use mock objects to simulate Semantic Kernel behavior without making actual API calls
+2. **Dependency Injection**: FastAPI's dependency injection is mocked to isolate components during testing
+3. **Async Testing**: Many tests use `pytest-asyncio` to handle asynchronous code
+4. **Test Fixtures**: Reusable test fixtures provide consistent test environments
+
+### Running Tests During Development
+
+During development, it's recommended to run tests frequently to ensure changes don't break existing functionality:
+
+```bash
+# Run all tests
+make test
+
+# Run tests with coverage
+make test-cov
+
+# For specific tests, you can use pytest directly
+python -m pytest tests/test_agent_runtime.py
+```
+
 ### Group Chat Flow
 
 1. **Group Chat Initialization**

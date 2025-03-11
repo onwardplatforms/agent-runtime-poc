@@ -7,3 +7,7 @@ python-dotenv
 colorama
 flask
 click
+pytest
+pytest-asyncio
+httpx
+pytest-cov

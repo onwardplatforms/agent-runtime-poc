@@ -1,4 +1,4 @@
-.PHONY: start-hello start-goodbye start-all test-hello test-goodbye test-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports test-group-chat setup-venv
+.PHONY: start-hello start-goodbye start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo
 
 # Default target
 all: start-all
@@ -65,14 +65,14 @@ check-agents:
 		echo "Hello Agent is already running."; \
 	else \
 		echo "Hello Agent is not running, starting it..."; \
-		cd samples/hello_agent && python hello_agent.py & \
+		cd agents/hello_agent && python hello_agent.py & \
 		echo "Hello Agent started on http://localhost:5001"; \
 	fi
 	@if pgrep -f "dotnet run" | grep -q goodbye_agent; then \
 		echo "Goodbye Agent is already running."; \
 	else \
 		echo "Goodbye Agent is not running, starting it..."; \
-		cd samples/goodbye_agent && dotnet run & \
+		cd agents/goodbye_agent && dotnet run & \
 		echo "Goodbye Agent started on http://localhost:5002"; \
 	fi
 
@@ -84,7 +84,7 @@ start-hello:
 		lsof -ti:5001 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	cd samples/hello_agent && python hello_agent.py &
+	cd agents/hello_agent && python hello_agent.py &
 	@echo "Hello Agent started on http://localhost:5001"
 
 # Start the Goodbye Agent (.NET)
@@ -95,7 +95,7 @@ start-goodbye:
 		lsof -ti:5002 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	cd samples/goodbye_agent && dotnet run &
+	cd agents/goodbye_agent && dotnet run &
 	@echo "Goodbye Agent started on http://localhost:5002"
 
 # Start the Agent Runtime
@@ -106,7 +106,7 @@ start-runtime:
 		lsof -ti:5003 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	PYTHONUNBUFFERED=1 python runtime_api.py &
+	PYTHONUNBUFFERED=1 python api.py &
 	@echo "Runtime started on http://localhost:5003"
 
 # Start both agents and the runtime
@@ -122,7 +122,7 @@ restart: stop clean-ports
 # Start CLI interface only (assumes runtime is already running)
 cli:
 	@echo "Starting CLI interface..."
-	./runtime.py interactive
+	./cli.py
 
 # Start CLI interface with minimal logging (assumes runtime is already running)
 cli-quiet: cli
@@ -135,14 +135,14 @@ runtime-cli:
 		lsof -ti:5003 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	PYTHONUNBUFFERED=1 python runtime_api.py
+	PYTHONUNBUFFERED=1 python api.py
 
 # Start all components in the background and launch CLI (main command for users)
 interactive: clean-ports
 	@echo "Checking if agents are already running..."
 	@if ! lsof -i:5001 > /dev/null 2>&1; then \
 		echo "Starting Hello Agent..."; \
-		cd samples/hello_agent && python hello_agent.py & \
+		cd agents/hello_agent && python hello_agent.py & \
 		echo "Hello Agent started on http://localhost:5001"; \
 	else \
 		echo "Hello Agent is already running."; \
@@ -150,7 +150,7 @@ interactive: clean-ports
 	
 	@if ! lsof -i:5002 > /dev/null 2>&1; then \
 		echo "Starting Goodbye Agent..."; \
-		cd samples/goodbye_agent && dotnet run & \
+		cd agents/goodbye_agent && dotnet run & \
 		echo "Goodbye Agent started on http://localhost:5002"; \
 	else \
 		echo "Goodbye Agent is already running."; \
@@ -158,7 +158,7 @@ interactive: clean-ports
 	
 	@if ! lsof -i:5003 > /dev/null 2>&1; then \
 		echo "Starting Agent Runtime..."; \
-		PYTHONUNBUFFERED=1 python runtime_api.py & \
+		PYTHONUNBUFFERED=1 python api.py & \
 		echo "Runtime started on http://localhost:5003"; \
 		sleep 2; \
 	else \
@@ -166,7 +166,7 @@ interactive: clean-ports
 	fi
 	
 	@echo "Starting CLI interface..."
-	./runtime.py interactive
+	./cli.py interactive
 
 # Start all components in the background and launch CLI with minimal logging
 interactive-quiet: interactive
@@ -198,7 +198,7 @@ test-runtime:
 # Test group chat with multiple agents
 test-group-chat:
 	@echo "Testing group chat with multiple agents..."
-	./runtime.py group "hello-agent,goodbye-agent" "Please provide a greeting and a farewell"
+	./cli.py --group "hello-agent,goodbye-agent" --query "Please provide a greeting and a farewell"
 	@echo "\n"
 
 # Test all agents and runtime
@@ -274,10 +274,32 @@ help:
 	@echo "  make interactive   - Start all components and launch the CLI interface (RECOMMENDED)"
 	@echo "  make cli           - Start the CLI interface only (assumes runtime is running)"
 	@echo "  make runtime-cli   - Run runtime in foreground with visible logs (for development)"
-	@echo "  make test-hello    - Test the Hello Agent"
-	@echo "  make test-goodbye  - Test the Goodbye Agent"
-	@echo "  make test-runtime  - Test the runtime"
-	@echo "  make test-group-chat - Test group chat with multiple agents"
-	@echo "  make test-all      - Test all components"
+	@echo "  make demo          - Run a quick demonstration of the system's functionality"
+	@echo "  make test          - Run all tests"
+	@echo "  make test-cov      - Run tests with coverage"
 	@echo "  make status        - Check the status of all components"
-	@echo "  make stop          - Stop all running components" 
+	@echo "  make stop          - Stop all running components"
+
+# Run tests
+test:
+	@echo "Running tests..."
+	pytest tests/ -v
+
+# Run tests with coverage
+test-cov:
+	@echo "Running tests with coverage..."
+	pytest tests/ --cov=runtime --cov=api --cov=cli --cov-report=term-missing -v
+
+# Demonstrate the system's functionality
+demo:
+	@echo "Demonstrating Agent Runtime functionality..."
+	@echo "\nTesting Hello Agent..."
+	curl -X POST http://localhost:5001/api/message \
+		-H "Content-Type: application/json" \
+		-d '{"messageId": "demo-msg-1", "conversationId": "demo-conv", "senderId": "demo", "recipientId": "hello-agent", "content": "Say hello in Spanish", "timestamp": "2023-03-10T12:00:00Z", "type": "Text"}' | jq
+	@echo "\nTesting Goodbye Agent..."
+	curl -X POST http://localhost:5002/api/message \
+		-H "Content-Type: application/json" \
+		-d '{"messageId": "demo-msg-2", "conversationId": "demo-conv", "senderId": "demo", "recipientId": "goodbye-agent", "content": "Say goodbye in French", "timestamp": "2023-03-10T12:00:00Z", "type": 0}' | jq
+	@echo "\nTesting Runtime with both agents..."
+	./cli.py --group "hello-agent,goodbye-agent" --query "Say hello in Spanish and say goodbye in French" 

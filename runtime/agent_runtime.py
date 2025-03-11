@@ -60,7 +60,7 @@ class AgentPlugin:
         }
     
     @kernel_function(
-        description="Call the agent with the given query",
+        description="Call the agent with the given query. ONLY use for specific language greeting/farewell tasks, NOT for general knowledge or math.",
         name="call_agent"  # Explicitly set the function name without hyphens
     )
     async def call_agent(
@@ -194,15 +194,23 @@ class AgentGroupChat:
         return self.messages
 
 class AgentRuntime:
-    """A runtime that orchestrates agent interactions using Semantic Kernel."""
+    """Main runtime for orchestrating agent interactions."""
     
-    def __init__(self, config_path: str = "agents.json"):
+    def __init__(self, config_path: str = None):
         self.agents = {}
         self.conversations = {}
         self.kernel = None
         self.verbose = False
+        
+        # If config_path is not provided, use the default path
+        if config_path is None:
+            # Get the directory of the current file
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(current_dir, "agents.json")
+            
         self.load_config(config_path)
         self.initialize_kernel()
+        self.register_agent_plugins()
         
     def load_config(self, config_path: str):
         """Load agent configurations from the provided JSON file."""
@@ -246,7 +254,7 @@ class AgentRuntime:
                 logger.info("Semantic Kernel initialized successfully.")
             except Exception as e:
                 logger.exception(f"Error initializing OpenAI chat service: {e}")
-                logger.info("Continuing without function calling capabilities.")
+                logger.info("Continuing without function calling capabilities. Direct agent calling will not be available.")
         except Exception as e:
             logger.exception(f"Error initializing Semantic Kernel: {e}")
     
@@ -289,7 +297,7 @@ class AgentRuntime:
         except Exception as e:
             logger.error(f"Error registering agent plugins: {e}")
             # Continue without function calling capabilities
-            logger.warning("Continuing without function calling capabilities. Will use fallback method.")
+            logger.warning("Continuing without function calling capabilities. Direct agent calling will not be available.")
             
         logger.info("Semantic Kernel initialized successfully.")
     
@@ -317,10 +325,21 @@ class AgentRuntime:
         
         # Add system message
         system_message = """
-        You are an orchestrator for multiple specialized agents. Your job is to:
-        1. Understand user queries and decide which agent functions should handle them
-        2. Provide a complete, coherent response that incorporates information from the agents
-        3. Only call agent functions when necessary to answer the query
+        You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
+
+        1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
+        2. EFFICIENCY: Only invoke agent functions when their specific capabilities are needed to address the query
+        3. DIRECT RESPONSE: Answer general knowledge questions, math problems, and common queries directly without calling agents
+        4. CLARITY: Provide coherent, unified responses that seamlessly integrate information from any agents you call
+        5. INTERACTION: If a user query is ambiguous or lacks necessary details, ask follow-up questions to clarify before proceeding
+        6. TRANSPARENCY: When you call an agent, explain to the user which agent you're calling and why
+        
+        IMPORTANT GUIDELINES:
+        - Each agent function has specific, narrow capabilities - only call them for tasks within their expertise
+        - For general knowledge, factual information, calculations, or reasoning tasks, respond directly
+        - If uncertain whether an agent can help, err on the side of answering directly
+        - If a user query requires information you don't have, acknowledge limitations and ask for clarification
+        - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
         """
         chat_history.add_system_message(system_message)
         
@@ -342,6 +361,9 @@ class AgentRuntime:
             # Set up function calling behavior
             settings = PromptExecutionSettings()
             settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
+            
+            # Add a note to only use functions when absolutely necessary
+            settings.extension_data = {"function_call_guidance": "only_when_necessary"}
             
             print("Using Semantic Kernel for function calling")
             
@@ -411,11 +433,24 @@ class AgentRuntime:
             
         except Exception as e:
             logger.exception(f"Error using Semantic Kernel for function calling: {e}")
-            print(f"Falling back to direct agent calling due to error: {e}")
             
-            # Fall back to direct agent calling
-            return await self._fallback_process_query(query, conversation_id, verbose, max_agents)
-    
+            # Return an error message instead of falling back
+            error_message = f"Error processing query: {str(e)}"
+            
+            # Create an error response message
+            response_message = {
+                "messageId": str(uuid.uuid4()),
+                "conversationId": conversation_id,
+                "senderId": "runtime",
+                "recipientId": "user",
+                "content": error_message,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "type": "Text",
+                "error": str(e)
+            }
+            
+            return response_message
+
     def get_conversation_history(self, conversation_id: str) -> List[Dict[str, Any]]:
         """Get the conversation history for a specific conversation."""
         return self.conversations.get(conversation_id, [])
@@ -458,13 +493,21 @@ class AgentRuntime:
                 
                 # Add system message
                 system_message = """
-                You are an orchestrator for multiple specialized agents. Your job is to:
-                1. Understand user queries and decide which agent functions should handle them
-                2. Provide a complete, coherent response that incorporates information from the agents
-                3. Only call agent functions when necessary to answer the query
+                You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
+
+                1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
+                2. EFFICIENCY: Only invoke agent functions when their specific capabilities are needed to address the query
+                3. DIRECT RESPONSE: Answer general knowledge questions, math problems, and common queries directly without calling agents
+                4. CLARITY: Provide coherent, unified responses that seamlessly integrate information from any agents you call
+                5. INTERACTION: If a user query is ambiguous or lacks necessary details, ask follow-up questions to clarify before proceeding
+                6. TRANSPARENCY: When you call an agent, explain to the user which agent you're calling and why
                 
-                The available agent functions each have specific capabilities. Call only the functions needed
-                to fully address all aspects of the user's query.
+                IMPORTANT GUIDELINES:
+                - Each agent function has specific, narrow capabilities - only call them for tasks within their expertise
+                - For general knowledge, factual information, calculations, or reasoning tasks, respond directly
+                - If uncertain whether an agent can help, err on the side of answering directly
+                - If a user query requires information you don't have, acknowledge limitations and ask for clarification
+                - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
                 """
                 chat_history.add_system_message(system_message)
                 
@@ -478,54 +521,93 @@ class AgentRuntime:
                 # Get the chat service
                 chat_service = self.kernel.get_service("chat-gpt")
                 
-                # Set up function calling behavior with the new API
+                # Set up function calling behavior
                 settings = PromptExecutionSettings()
                 settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
                 
-                # Process the query with streaming
-                content_chunks = []
-                agents_used = []
-                execution_trace = []
+                # Add a note to only use functions when absolutely necessary
+                settings.extension_data = {"function_call_guidance": "only_when_necessary"}
                 
-                async for chunk in chat_service.get_streaming_chat_message_contents(
+                print("Using Semantic Kernel for function calling")
+                
+                # Get the streaming content
+                streaming_content = chat_service.get_streaming_chat_message_contents(
                     chat_history=chat_history,
                     settings=settings,
                     kernel=self.kernel
-                ):
-                    # Extract content from the chunk
-                    content = chunk.content if hasattr(chunk, "content") else ""
-                    if content:
-                        content_chunks.append(content)
+                )
+                
+                # Check if it's an async iterator or a coroutine
+                if hasattr(streaming_content, '__aiter__'):
+                    # It's an async iterator, use async for
+                    async for chunk in streaming_content:
+                        # Extract content from the chunk
+                        if hasattr(chunk, 'content') and chunk.content:
+                            yield {
+                                "chunk": chunk.content,
+                                "complete": False
+                            }
+                else:
+                    # It's a coroutine, await it and then process
+                    try:
+                        result_chunks = await streaming_content
+                        if isinstance(result_chunks, list):
+                            # If it returns a list of chunks
+                            for chunk in result_chunks:
+                                if hasattr(chunk, 'content') and chunk.content:
+                                    yield {
+                                        "chunk": chunk.content,
+                                        "complete": False
+                                    }
+                        elif hasattr(result_chunks, 'content') and result_chunks.content:
+                            # If it returns a single result
+                            yield {
+                                "chunk": result_chunks.content,
+                                "complete": False
+                            }
+                    except Exception as e:
+                        print(f"Error awaiting streaming content: {e}")
                         yield {
-                            "chunk": content,
-                            "complete": False
+                            "chunk": f"Error processing query: {e}",
+                            "complete": True,
+                            "error": f"Error processing query: {e}"
                         }
-                    
-                    # Extract function calls from chunk
-                    if hasattr(chunk, "tool_calls") and chunk.tool_calls:
-                        for tool_call in chunk.tool_calls:
-                            if hasattr(tool_call, "function") and hasattr(tool_call.function, "name"):
-                                func_name = tool_call.function.name
-                                
-                                # Extract agent ID from function name
-                                for agent_id in self.agents:
-                                    if agent_id in func_name and agent_id not in agents_used:
-                                        agents_used.append(agent_id)
-                                        trace_entry = f"Called {agent_id}"
-                                        execution_trace.append(trace_entry)
-                                        yield {
-                                            "chunk": f"Calling {self.agents[agent_id].name}...",
-                                            "complete": False,
-                                            "agent_id": agent_id
-                                        }
+                        # Skip the rest of the processing
+                        return
                 
-                # Join the chunks for the final content
-                full_content = "".join(content_chunks)
+                # Get the final result
+                result = await chat_service.get_chat_message_contents(
+                    chat_history=chat_history,
+                    settings=settings,
+                    kernel=self.kernel
+                )
                 
-                # Add the response to the conversation history
+                # Extract the response content
+                if hasattr(result, 'content'):
+                    response_content = result.content
+                elif hasattr(result, 'items') and len(result.items) > 0 and hasattr(result.items[0], 'text'):
+                    response_content = result.items[0].text
+                elif isinstance(result, list) and len(result) > 0:
+                    if hasattr(result[0], 'items') and len(result[0].items) > 0 and hasattr(result[0].items[0], 'text'):
+                        response_content = result[0].items[0].text
+                    elif hasattr(result[0], 'content'):
+                        response_content = result[0].content
+                    else:
+                        response_content = str(result[0])
+                else:
+                    response_content = str(result)
+                
+                # Get the agents that were used
+                global last_called_agent
+                agents_used = []
+                if last_called_agent:
+                    agents_used.append(last_called_agent)
+                    last_called_agent = None  # Reset for next query
+                
+                # Add to conversation history
                 self.conversations[conversation_id].append({
                     "role": "assistant",
-                    "content": full_content,
+                    "content": response_content,
                     "timestamp": datetime.datetime.now().isoformat(),
                     "agents_used": agents_used
                 })
@@ -534,196 +616,30 @@ class AgentRuntime:
                 yield {
                     "chunk": None,
                     "complete": True,
-                    "response": full_content,
+                    "response": response_content,
                     "conversation_id": conversation_id,
                     "processing_time": time.time() - start_time,
-                    "agents_used": agents_used,
-                    "execution_trace": execution_trace if verbose else None
+                    "agents_used": agents_used
                 }
-                return
             else:
-                # Fall back to direct agent calling if Semantic Kernel is not available
+                # Kernel not available
+                error_message = "Semantic Kernel is not available. Please initialize the kernel first."
                 yield {
-                    "chunk": "Semantic Kernel not available, falling back to direct agent calling...",
-                    "complete": False
+                    "chunk": error_message,
+                    "complete": True,
+                    "error": error_message
                 }
         except Exception as e:
-            print(f"Error using Semantic Kernel for function calling: {e}")
+            # Handle any errors
+            error_message = f"Error processing query: {str(e)}"
+            print(f"Error in stream_process_query: {e}")
+            
+            # Yield the error
             yield {
-                "chunk": f"Error using Semantic Kernel: {str(e)}. Falling back to direct agent calling...",
-                "complete": False
+                "chunk": error_message,
+                "complete": True,
+                "error": error_message
             }
-        
-        # Fall back to direct agent calling
-        # Simple keyword-based agent selection
-        agents_to_use = []
-        
-        # Check for hello-related keywords
-        if any(keyword in query.lower() for keyword in ["hello", "hi", "greet", "hola", "bonjour"]):
-            agents_to_use.append("hello-agent")
-            
-        # Check for goodbye-related keywords
-        if any(keyword in query.lower() for keyword in ["goodbye", "bye", "farewell", "adios", "au revoir"]):
-            agents_to_use.append("goodbye-agent")
-            
-        # If no specific agent was selected, use both as a fallback
-        if not agents_to_use:
-            agents_to_use = ["hello-agent", "goodbye-agent"]
-        
-        # Call the selected agents
-        responses = []
-        execution_trace = []
-        
-        for agent_id in agents_to_use:
-            agent = self.agents[agent_id]
-            try:
-                # Yield a status update
-                yield {
-                    "chunk": f"Calling {agent.name}...",
-                    "complete": False
-                }
-                
-                print(f"Calling agent {agent_id} with query: {query}")
-                response = await agent.call_agent(query, "user", conversation_id)
-                
-                # Yield the agent's response
-                yield {
-                    "chunk": response,
-                    "complete": False,
-                    "agent_id": agent_id
-                }
-                
-                responses.append({
-                    "agent_id": agent_id,
-                    "response": response
-                })
-                execution_trace.append({
-                    "agent_id": agent_id,
-                    "query": query,
-                    "response": response,
-                    "timestamp": datetime.datetime.now().isoformat()
-                })
-            except Exception as e:
-                print(f"Error calling agent {agent_id}: {e}")
-                # Yield the error
-                yield {
-                    "chunk": f"Error calling {agent.name}: {str(e)}",
-                    "complete": False,
-                    "agent_id": agent_id
-                }
-                
-                responses.append({
-                    "agent_id": agent_id,
-                    "error": str(e)
-                })
-                execution_trace.append({
-                    "agent_id": agent_id,
-                    "query": query,
-                    "error": str(e),
-                    "timestamp": datetime.datetime.now().isoformat()
-                })
-        
-        # Combine responses
-        combined_response = " ".join([r["response"] for r in responses if "response" in r])
-        
-        # Add to conversation history
-        self.conversations[conversation_id].append({
-            "role": "assistant",
-            "content": combined_response,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "agents_used": agents_to_use
-        })
-        
-        # Yield the complete response
-        yield {
-            "chunk": None,
-            "complete": True,
-            "response": combined_response,
-            "conversation_id": conversation_id,
-            "processing_time": time.time() - start_time,
-            "agents_used": agents_to_use,
-            "execution_trace": execution_trace if verbose else None
-        }
-
-    async def _fallback_process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False, max_agents: int = None) -> Dict[str, Any]:
-        """Fallback method for processing queries when Semantic Kernel function calling fails."""
-        start_time = time.time()
-        
-        # Initialize conversation if not provided
-        if not conversation_id:
-            conversation_id = str(uuid.uuid4())
-        
-        # Initialize conversation history if it doesn't exist
-        if conversation_id not in self.conversations:
-            self.conversations[conversation_id] = []
-        
-        # Simple keyword-based agent selection
-        agents_to_use = []
-        
-        # Check for hello-related keywords
-        if any(keyword in query.lower() for keyword in ["hello", "hi", "greet", "hola", "bonjour"]):
-            agents_to_use.append("hello-agent")
-            
-        # Check for goodbye-related keywords
-        if any(keyword in query.lower() for keyword in ["goodbye", "bye", "farewell", "adios", "au revoir"]):
-            agents_to_use.append("goodbye-agent")
-            
-        # If no specific agent was selected, use both as a fallback
-        if not agents_to_use:
-            agents_to_use = ["hello-agent", "goodbye-agent"]
-            
-        # Limit the number of agents if specified
-        if max_agents and len(agents_to_use) > max_agents:
-            agents_to_use = agents_to_use[:max_agents]
-            
-        # Call the selected agents
-        responses = []
-        execution_trace = []
-        
-        for agent_id in agents_to_use:
-            agent = self.agents[agent_id]
-            try:
-                logger.debug(f"Calling agent {agent_id} with query: {query}")
-                response = await agent.call_agent(query, "user", conversation_id)
-                responses.append({
-                    "agent_id": agent_id,
-                    "response": response
-                })
-                execution_trace.append(f"Called {agent_id} with query: {query}")
-            except Exception as e:
-                logger.exception(f"Error calling agent {agent_id}: {e}")
-                responses.append({
-                    "agent_id": agent_id,
-                    "error": str(e)
-                })
-                execution_trace.append(f"Error calling {agent_id}: {e}")
-        
-        # Combine responses
-        combined_response = " ".join([r["response"] for r in responses if "response" in r])
-        
-        # Create the response message
-        response_message = {
-            "messageId": str(uuid.uuid4()),
-            "conversationId": conversation_id,
-            "senderId": "runtime",
-            "recipientId": "user",
-            "content": combined_response,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "type": "Text",
-            "execution_trace": execution_trace if verbose else [],
-            "agents_used": agents_to_use  # Always include agents_used
-        }
-        
-        # Add to conversation history
-        self.conversations[conversation_id].append({
-            "role": "assistant",
-            "content": combined_response,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "execution_trace": execution_trace if verbose else [],
-            "agents_used": agents_to_use  # Always include agents_used
-        })
-        
-        return response_message
 
 async def main():
     """Main function to demonstrate the agent runtime."""

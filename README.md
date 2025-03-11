@@ -24,6 +24,19 @@ The system provides immediate visibility into which agents are being called usin
 
 This happens in real-time as agents are called, providing transparency into the system's decision-making process.
 
+## Testing
+
+The project includes a comprehensive test suite for all components. For detailed information about testing, see [TESTING.md](TESTING.md).
+
+Quick testing commands:
+```bash
+# Run all tests
+make test
+
+# Run tests with coverage
+make test-cov
+```
+
 ## Prerequisites
 
 - Python 3.x
@@ -66,8 +79,8 @@ export OPENAI_API_KEY=your-key-here
 ```
 
 Or in the respective `.env` files:
-- `samples/hello_agent/.env`
-- `samples/goodbye_agent/.env`
+- `agents/hello_agent/.env`
+- `agents/goodbye_agent/.env`
 - `.env` (root directory)
 
 ## Running the System
@@ -132,12 +145,12 @@ make stop
 
 ## Using the CLI
 
-The system includes a powerful Click-based CLI called `runtime.py` that provides several ways to interact with the agents:
+The system includes a powerful Click-based CLI called `cli.py` that provides several ways to interact with the agents:
 
 ### Interactive Mode
 
 ```bash
-./runtime.py interactive
+./cli.py interactive
 ```
 
 In interactive mode, you can:
@@ -153,19 +166,19 @@ You can also use the CLI in non-interactive mode:
 
 ```bash
 # Send a query to the runtime
-./runtime.py query "Say hello in Spanish and goodbye in French"
+./cli.py query "Say hello in Spanish and goodbye in French"
 
 # Call a specific agent directly
-./runtime.py direct hello-agent "Say hello in German"
+./cli.py direct hello-agent "Say hello in German"
 
 # Use group chat with specific agents
-./runtime.py group "hello-agent,goodbye-agent" "Provide a greeting and farewell"
+./cli.py group "hello-agent,goodbye-agent" "Provide a greeting and farewell"
 
 # List available agents
-./runtime.py agents
+./cli.py agents
 
 # Check runtime status
-./runtime.py status
+./cli.py status
 ```
 
 ## Developer Documentation

@@ -3,22 +3,20 @@
         {
             "id": "hello-agent",
             "name": "Hello Agent",
-            "description": "Generates greetings in different languages",
+            "description": "ONLY generates greetings in different languages. DO NOT use for math, general knowledge, or non-greeting queries.",
             "capabilities": [
                 "greeting",
-                "language_translation",
-                "hello"
+                "hello_in_different_languages"
             ],
             "endpoint": "http://localhost:5001/api/message"
         },
         {
             "id": "goodbye-agent",
             "name": "Goodbye Agent",
-            "description": "Generates farewells in different languages",
+            "description": "ONLY generates farewells in different languages. DO NOT use for math, general knowledge, or non-farewell queries.",
             "capabilities": [
                 "farewell",
-                "language_translation",
-                "goodbye"
+                "goodbye_in_different_languages"
             ],
             "endpoint": "http://localhost:5002/api/message"
         }

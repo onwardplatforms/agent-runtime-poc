@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
-from agent_runtime import AgentRuntime, AgentTerminationStrategy, AgentGroupChat
+from runtime.agent_runtime import AgentRuntime, AgentTerminationStrategy, AgentGroupChat
 
 # Configure logging
 logging.basicConfig(
