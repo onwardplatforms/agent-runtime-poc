@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-from runtime.agent_runtime import AgentGroupChat, AgentPlugin, AgentTerminationStrategy
 import os
 import sys
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from runtime.agent_runtime import AgentGroupChat, AgentPlugin, AgentTerminationStrategy
 
 # Add the parent directory to the path so we can import the runtime module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

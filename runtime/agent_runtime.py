@@ -692,6 +692,7 @@ async def main():
     """Run the agent runtime."""
     # Import what's needed here to avoid circular imports
     import argparse
+
     # Don't redefine asyncio which is already imported at the top
     # Just use what's already available
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from cli.runtime import cli, send_query, send_streaming_group_chat_query, send_streaming_query
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -8,6 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 from click.testing import CliRunner
+
+from cli.runtime import cli, send_query, send_streaming_group_chat_query, send_streaming_query
 
 # Add the parent directory to the path so we can import the CLI module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

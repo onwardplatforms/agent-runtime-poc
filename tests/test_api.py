@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-from api.runtime_api import app, get_runtime
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+
+from api.runtime_api import app, get_runtime
 
 # Add the parent directory to the path so we can import the API module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

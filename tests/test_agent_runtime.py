@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-from runtime.agent_runtime import AgentPlugin, AgentRuntime
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from runtime.agent_runtime import AgentPlugin, AgentRuntime
 
 # Add the parent directory to the path so we can import the runtime module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
