@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -36,6 +36,19 @@ jobs:
       run: |
         cd agents/goodbye_agent
         dotnet restore
+    
+    - name: Run lint checks
+      run: make lint
+    
+    - name: Check code formatting
+      run: make check-format
 
     - name: Run tests
-      run: make test 
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: make test
+      
+    - name: Run test coverage
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: make test-cov 
