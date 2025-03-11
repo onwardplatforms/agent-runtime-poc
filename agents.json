@@ -1,0 +1,26 @@
+{
+    "agents": [
+        {
+            "id": "hello-agent",
+            "name": "Hello Agent",
+            "description": "Generates greetings in different languages",
+            "capabilities": [
+                "greeting",
+                "language_translation",
+                "hello"
+            ],
+            "endpoint": "http://localhost:5001/api/message"
+        },
+        {
+            "id": "goodbye-agent",
+            "name": "Goodbye Agent",
+            "description": "Generates farewells in different languages",
+            "capabilities": [
+                "farewell",
+                "language_translation",
+                "goodbye"
+            ],
+            "endpoint": "http://localhost:5002/api/message"
+        }
+    ]
+}

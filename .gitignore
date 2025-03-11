@@ -1,0 +1,54 @@
+# Ignore the .ignore folder containing the Semantic Kernel repo
+.ignore/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environment
+.env
+.venv
+venv/
+ENV/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.lock.json
+project.lock.json
+artifacts/
+.vs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db 

@@ -1,0 +1,9 @@
+semantic-kernel
+fastapi
+uvicorn
+pydantic
+requests
+python-dotenv
+colorama
+flask
+click
