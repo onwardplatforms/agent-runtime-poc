@@ -378,8 +378,13 @@ class AgentRuntime:
             # Get the service
             chat_service = self.kernel.get_service("chat-completion")
 
+            # Get available agents info for the system message
+            available_agents_info = "\nAVAILABLE AGENTS:\n"
+            for agent_id, agent in self.agents.items():
+                available_agents_info += f"- {agent.name} ({agent_id}): {agent.description}\n"
+
             # Prompt guidance for the LLM - updated to focus on description rather than capabilities
-            system_message = """
+            system_message = f"""
             You are an AI assistant that helps users by routing queries to specialized external agents.
             
             GUIDELINES:
@@ -391,6 +396,18 @@ class AgentRuntime:
             - Each agent function has specific, narrow expertise - only call them for tasks within their domain
             - Do NOT invoke agent functions for general knowledge, math, coding, or reasoning tasks
             - Base your decision on the agent description, not just the name
+            - ONLY CALL AGENTS THAT ACTUALLY EXIST in the system - do not attempt to call fictional agents
+            - If you need functionality from an agent that doesn't exist, acknowledge the limitation instead
+            
+            RESPONSE EVALUATION:
+            - CRITICALLY EVALUATE all agent responses to determine if they actually fulfill the user's request
+            - If an agent indicates it CANNOT help (e.g., outside its domain), DO NOT make up information
+            - When an agent can't fulfill a request, clearly acknowledge this limitation to the user
+            - Try reformulating your request to the agent if the initial response was unhelpful
+            - Offer alternative approaches when agents cannot provide the requested information
+            - NEVER fabricate facts or present made-up information as if it came from an agent
+            
+            {available_agents_info}
             
             Always respond in a helpful, conversational tone.
             """
@@ -530,8 +547,13 @@ class AgentRuntime:
                 debug_print("DEBUG: Creating chat history for conversation")
                 chat_history = ChatHistory()
 
+                # Get available agents info for the system message
+                available_agents_info = "\nAVAILABLE AGENTS:\n"
+                for agent_id, agent in self.agents.items():
+                    available_agents_info += f"- {agent.name} ({agent_id}): {agent.description}\n"
+
                 # Add system message
-                system_message = """
+                system_message = f"""
                 You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
 
                 1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
@@ -547,6 +569,18 @@ class AgentRuntime:
                 - If uncertain whether an agent can help, err on the side of answering directly
                 - If a user query requires information you don't have, acknowledge limitations and ask for clarification
                 - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
+                - ONLY CALL AGENTS THAT ACTUALLY EXIST in the system - do not attempt to call fictional agents
+                - If you need functionality from an agent that doesn't exist, acknowledge the limitation instead
+                
+                RESPONSE EVALUATION:
+                - CRITICALLY EVALUATE all agent responses to determine if they actually fulfill the user's request
+                - If an agent indicates it CANNOT help (e.g., outside its domain), DO NOT make up information
+                - When an agent can't fulfill a request, clearly acknowledge this limitation to the user
+                - Try reformulating your request to the agent if the initial response was unhelpful
+                - Offer alternative approaches when agents cannot provide the requested information
+                - NEVER fabricate facts or present made-up information as if it came from an agent
+                
+                {available_agents_info}
                 """
                 debug_print("DEBUG: Adding system message to chat history")
                 chat_history.add_system_message(system_message)

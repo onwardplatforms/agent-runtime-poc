@@ -1,4 +1,4 @@
-.PHONY: start-hello start-goodbye start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake isort autopep8 format check-format
+.PHONY: start-hello start-goodbye start-math start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake isort autopep8 format check-format
 
 # Default target
 all: start-all
@@ -43,13 +43,19 @@ check-ports:
 	else \
 		echo "✅ Port 5002 (Goodbye Agent) is available"; \
 	fi
+	@if lsof -i:5004 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5004 (Math Agent) is in use"; \
+	else \
+		echo "✅ Port 5004 (Math Agent) is available"; \
+	fi
 
 # Kill processes using specific ports
 kill-port:
-	@echo "Killing processes using ports 5003, 5001, and 5002..."
+	@echo "Killing processes using ports 5003, 5001, 5002, and 5004..."
 	-lsof -ti:5003 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:5001 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:5002 | xargs kill -9 2>/dev/null || true
+	-lsof -ti:5004 | xargs kill -9 2>/dev/null || true
 	@echo "Ports should now be free"
 
 # Clean up all ports used by our services
@@ -75,6 +81,13 @@ check-agents:
 		cd agents/goodbye_agent && dotnet run & \
 		echo "Goodbye Agent started on http://localhost:5002"; \
 	fi
+	@if pgrep -f "python math_agent.py" > /dev/null; then \
+		echo "Math Agent is already running."; \
+	else \
+		echo "Math Agent is not running, starting it..."; \
+		cd agents/math_agent && python math_agent.py & \
+		echo "Math Agent started on http://localhost:5004"; \
+	fi
 
 # Start the Hello Agent (Python)
 start-hello:
@@ -98,6 +111,17 @@ start-goodbye:
 	cd agents/goodbye_agent && dotnet run &
 	@echo "Goodbye Agent started on http://localhost:5002"
 
+# Start the Math Agent (Python)
+start-math:
+	@echo "Starting Math Agent..."
+	@if lsof -i:5004 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5004 is already in use. Killing existing process..."; \
+		lsof -ti:5004 | xargs kill -9 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	cd agents/math_agent && python math_agent.py &
+	@echo "Math Agent started on http://localhost:5004"
+
 # Start the Agent Runtime
 start-runtime:
 	@echo "Starting Agent Runtime..."
@@ -109,8 +133,8 @@ start-runtime:
 	PYTHONUNBUFFERED=1 python api.py &
 	@echo "Runtime started on http://localhost:5003"
 
-# Start both agents and the runtime
-start-all: start-hello start-goodbye start-runtime
+# Start all agents and the runtime
+start-all: start-hello start-goodbye start-math start-runtime
 	@echo "All components are running!"
 
 # Restart all components
@@ -156,6 +180,14 @@ interactive: clean-ports
 		echo "Goodbye Agent is already running."; \
 	fi
 	
+	@if ! lsof -i:5004 > /dev/null 2>&1; then \
+		echo "Starting Math Agent..."; \
+		cd agents/math_agent && python math_agent.py & \
+		echo "Math Agent started on http://localhost:5004"; \
+	else \
+		echo "Math Agent is already running."; \
+	fi
+	
 	@if ! lsof -i:5003 > /dev/null 2>&1; then \
 		echo "Starting Agent Runtime..."; \
 		PYTHONUNBUFFERED=1 python api.py & \
@@ -187,6 +219,14 @@ test-goodbye:
 		-d '{"messageId": "test-msg-2", "conversationId": "test-conv", "senderId": "tester", "recipientId": "goodbye-agent", "content": "Say goodbye in French", "timestamp": "2023-03-10T12:00:00Z", "type": 0}' | jq
 	@echo "\n"
 
+# Test Math Agent with curl
+test-math:
+	@echo "Testing Math Agent..."
+	curl -X POST http://localhost:5004/api/message \
+		-H "Content-Type: application/json" \
+		-d '{"messageId": "test-msg-3", "conversationId": "test-conv", "senderId": "tester", "recipientId": "math-agent", "content": "What is 25 plus 75?", "timestamp": "2023-03-10T12:00:00Z", "type": "Text"}' | jq
+	@echo "\n"
+
 # Test the runtime
 test-runtime:
 	@echo "Testing Agent Runtime..."
@@ -198,17 +238,18 @@ test-runtime:
 # Test group chat with multiple agents
 test-group-chat:
 	@echo "Testing group chat with multiple agents..."
-	./cli.py --group "hello-agent,goodbye-agent" --query "Please provide a greeting and a farewell"
+	./cli.py group "hello-agent,goodbye-agent,math-agent" "Say hello in Spanish, calculate 25 plus 75, and say goodbye in French"
 	@echo "\n"
 
 # Test all agents and runtime
-test-all: test-hello test-goodbye test-runtime test-group-chat
+test-all: test-hello test-goodbye test-math test-runtime test-group-chat
 
 # Stop all components - more thoroughly
 stop:
 	@echo "Stopping all processes..."
-	@echo "Stopping Flask apps (Hello Agent and Runtime)..."
+	@echo "Stopping Flask apps (Hello Agent, Math Agent, and Runtime)..."
 	-pkill -f "python hello_agent.py" 2>/dev/null || true
+	-pkill -f "python math_agent.py" 2>/dev/null || true
 	-pkill -f "runtime_api.py" 2>/dev/null || true
 	
 	@echo "Stopping .NET apps (Goodbye Agent)..."
@@ -219,6 +260,7 @@ stop:
 	-lsof -ti:5003 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:5001 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:5002 | xargs kill -9 2>/dev/null || true
+	-lsof -ti:5004 | xargs kill -9 2>/dev/null || true
 	
 	@echo "All components stopped"
 
@@ -235,6 +277,11 @@ status:
 		echo "Goodbye Agent (process): RUNNING"; \
 	else \
 		echo "Goodbye Agent (process): STOPPED"; \
+	fi
+	@if pgrep -f "python math_agent.py" > /dev/null; then \
+		echo "Math Agent (process): RUNNING"; \
+	else \
+		echo "Math Agent (process): STOPPED"; \
 	fi
 	@if pgrep -f "python runtime_api.py" > /dev/null; then \
 		echo "Runtime (process): RUNNING"; \
@@ -258,6 +305,11 @@ status:
 	else \
 		echo "Port 5003 (Runtime): AVAILABLE"; \
 	fi
+	@if lsof -i:5004 > /dev/null 2>&1; then \
+		echo "Port 5004 (Math Agent): IN USE"; \
+	else \
+		echo "Port 5004 (Math Agent): AVAILABLE"; \
+	fi
 
 # Help command
 help:
@@ -268,8 +320,9 @@ help:
 	@echo "  make clean-ports   - Kill processes and verify ports are free"
 	@echo "  make start-hello   - Start the Hello Agent"
 	@echo "  make start-goodbye - Start the Goodbye Agent"
+	@echo "  make start-math    - Start the Math Agent"
 	@echo "  make start-runtime - Start the Agent Runtime"
-	@echo "  make start-all     - Start both agents and the runtime"
+	@echo "  make start-all     - Start all agents and the runtime"
 	@echo "  make restart       - Restart all components (with port checking)"
 	@echo "  make interactive   - Start all components and launch the CLI interface (RECOMMENDED)"
 	@echo "  make cli           - Start the CLI interface only (assumes runtime is running)"
@@ -311,8 +364,12 @@ demo:
 	curl -X POST http://localhost:5002/api/message \
 		-H "Content-Type: application/json" \
 		-d '{"messageId": "demo-msg-2", "conversationId": "demo-conv", "senderId": "demo", "recipientId": "goodbye-agent", "content": "Say goodbye in French", "timestamp": "2023-03-10T12:00:00Z", "type": 0}' | jq
-	@echo "\nTesting Runtime with both agents..."
-	./cli.py --group "hello-agent,goodbye-agent" --query "Say hello in Spanish and say goodbye in French"
+	@echo "\nTesting Math Agent..."
+	curl -X POST http://localhost:5004/api/message \
+		-H "Content-Type: application/json" \
+		-d '{"messageId": "demo-msg-3", "conversationId": "demo-conv", "senderId": "demo", "recipientId": "math-agent", "content": "What is 25 plus 75?", "timestamp": "2023-03-10T12:00:00Z", "type": "Text"}' | jq
+	@echo "\nTesting Runtime with all agents..."
+	./cli.py group "hello-agent,goodbye-agent,math-agent" "Say hello in Spanish, calculate 25 plus 75, and say goodbye in French"
 
 # Code Quality Commands
 lint: flake8 mypy

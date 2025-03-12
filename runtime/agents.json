@@ -14,6 +14,12 @@
             "name": "Goodbye Agent",
             "description": "ONLY generates farewells in different languages. DO NOT use for math, general knowledge, or non-farewell queries.",
             "endpoint": "http://localhost:5002/api/message"
+        },
+        {
+            "id": "math-agent",
+            "name": "Math Agent",
+            "description": "Performs mathematical calculations including addition, subtraction, multiplication, division, square roots, powers, and percentages. ONLY use for math calculations.",
+            "endpoint": "http://localhost:5004/api/message"
         }
     ]
 }
