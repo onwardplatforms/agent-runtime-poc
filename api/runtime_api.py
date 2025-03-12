@@ -221,6 +221,9 @@ async def stream_group_chat_response(query: GroupChatQuery, runtime: AgentRuntim
     logger.debug(f"Starting streaming group chat response for query: {query.query}")
 
     try:
+        # Initialize response with default values to avoid the variable reference error
+        response = {"content": "", "agents_used": []}
+        
         # Send an initial message to confirm streaming has started
         yield f"data: {json.dumps({'chunk': 'Starting group chat streaming response...', 'complete': False})}\n\n"
 
@@ -271,8 +274,13 @@ async def stream_group_chat_response(query: GroupChatQuery, runtime: AgentRuntim
             except asyncio.TimeoutError:
                 # No event available, check if process task is done
                 if process_task.done():
-                    # Get the result
-                    response = process_task.result()
+                    try:
+                        # Get the result
+                        response = process_task.result()
+                        logger.debug(f"Process task completed with response: {response}")
+                    except Exception as e:
+                        logger.exception(f"Error getting process task result: {e}")
+                        response = {"content": f"Error: {str(e)}", "agents_used": []}
                     break
 
         # Cleanup

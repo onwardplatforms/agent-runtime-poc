@@ -84,6 +84,9 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
         if max_agents is not None:
             payload["max_agents"] = max_agents
 
+        # Don't display the user query again since it's already displayed in the prompt
+        # click.echo(f"\nyou → {query}")
+
         # Use stream=True to get the response as it comes
         with requests.post(
             f"{RUNTIME_URL}/api/query",
@@ -98,9 +101,7 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
             result_conversation_id = conversation_id
             processing_time = None
 
-            # Track if we're currently displaying a response
-            is_displaying_response = False
-            current_response = ""
+            # Track current agent info and response
             current_agent_id = None
             current_agent_response = ""
 
@@ -130,21 +131,9 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
 
                         # Handle different types of chunks
                         if "content" in data:
-                            # Text content chunk - display immediately as they arrive
+                            # Text content chunk - accumulate for final display
                             chunk = data["content"]
                             if chunk:
-                                # Display chunk as it arrives (without newline)
-                                if not is_displaying_response:
-                                    # Start displaying the response
-                                    click.echo("\nruntime → ", nl=False)
-                                    is_displaying_response = True
-
-                                # Display the chunk without newline to create streaming effect
-                                click.echo(chunk, nl=False)
-                                sys.stdout.flush()  # Force output to display immediately
-
-                                # Add to accumulated response
-                                current_response += chunk
                                 complete_response += chunk
                         elif "chunk" in data:
                             # Skip internal status messages
@@ -175,36 +164,44 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                                 # Regular chunk - collect but don't display immediately
                                 chunk = data["chunk"]
                                 if chunk and not chunk.startswith("DEBUG:"):
-                                    current_response += chunk
                                     complete_response += chunk
 
-                        # Handle agent calls
+                        # Handle agent calls in the desired format
                         if "agent_call" in data:
                             agent_id = data["agent_call"]
                             current_agent_id = agent_id
                             current_agent_response = ""
-                            click.echo(f"\nƒ(x) calling {agent_id}...")
-
-                            # Display the query sent to the agent, if available
+                            
+                            # Display the query sent to the agent in the desired format
                             if "agent_query" in data:
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ runtime → {data['agent_query']}{Style.RESET_ALL}")
+                                click.echo(f"\nruntime to {agent_id} → {data['agent_query']}")
 
-                        # Handle agent responses
+                        # Handle agent responses in the desired format
                         if "agent_response" in data and "agent_id" in data:
                             agent_id = data["agent_id"]
                             response_text = data["agent_response"]
+                            
                             if response_text:
-                                # Only update the current_agent_id if different, but don't print a duplicate call message
-                                # (The agent_call event should have already printed this)
+                                # Only update the current_agent_id if different
                                 if agent_id != current_agent_id:
+                                    if current_agent_response:
+                                        # Print any accumulated response from previous agent
+                                        click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
                                     current_agent_id = agent_id
                                     current_agent_response = ""
 
                                 # Append to current agent response
                                 current_agent_response += response_text
-
-                                # Display agent response with the indented format in gray
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ {agent_id} → {response_text}{Style.RESET_ALL}")
+                                
+                                # Check if we should display the accumulated response
+                                # Display on sentence endings, line breaks, or if we've accumulated a lot
+                                if (response_text.endswith('.') or 
+                                    response_text.endswith('!') or 
+                                    response_text.endswith('?') or
+                                    '\n' in response_text or
+                                    len(current_agent_response) > 100):
+                                    click.echo(f"\n{agent_id} to runtime → {current_agent_response}")
+                                    current_agent_response = ""
 
                         # Handle error
                         if "error" in data:
@@ -214,12 +211,13 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                         if verbose:
                             click.echo(f"\n{Fore.RED}Error parsing streaming response: {e}{Style.RESET_ALL}")
 
+            # Display any remaining agent response
+            if current_agent_response:
+                click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
+
             # Display the final response
-            if complete_response and not is_displaying_response:
-                click.echo(f"\nruntime → {complete_response.strip()}")
-            elif is_displaying_response:
-                # If we've been displaying chunks, just add a newline at the end
-                click.echo("")
+            if complete_response:
+                click.echo(f"\nruntime to you → {complete_response.strip()}")
 
             # Return the complete response
             return {
@@ -291,6 +289,15 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
         if max_iterations:
             payload["max_iterations"] = max_iterations
 
+        # Don't display the user query again since it's already displayed in the prompt
+        # click.echo(f"\nyou → {query}")
+        
+        # Force debug to be True for this function to trace the issue
+        local_debug = False
+        if local_debug:
+            click.echo(f"\n{Fore.MAGENTA}DEBUG: Sending payload to {RUNTIME_URL}/api/group-chat{Style.RESET_ALL}")
+            click.echo(f"{Fore.MAGENTA}DEBUG: Payload = {json.dumps(payload)}{Style.RESET_ALL}")
+
         # Use stream=True to get the response as it comes
         with requests.post(
             f"{RUNTIME_URL}/api/group-chat",
@@ -298,14 +305,16 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
             stream=True
         ) as response:
             response.raise_for_status()
+            
+            if local_debug:
+                click.echo(f"{Fore.MAGENTA}DEBUG: Response status code = {response.status_code}{Style.RESET_ALL}")
 
             # Initialize variables to store the complete response
+            complete_response = ""
             agents_used = []
             result_conversation_id = conversation_id
 
-            # Track if we're currently displaying a response
-            is_displaying_response = False
-            current_response = ""
+            # Track current agent info and response
             current_agent_id = None
             current_agent_response = ""
 
@@ -317,13 +326,18 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                 # Remove the "data: " prefix and parse the JSON
                 if line.startswith(b'data: '):
                     data_str = line[6:].decode('utf-8')
+                    
+                    if local_debug:
+                        click.echo(f"{Fore.MAGENTA}DEBUG: Received data = {data_str}{Style.RESET_ALL}")
 
                     # Check if it's the end marker
                     if data_str == "[DONE]":
+                        if local_debug:
+                            click.echo(f"{Fore.MAGENTA}DEBUG: End of stream marker received{Style.RESET_ALL}")
                         break
 
                     # Print raw data for debugging
-                    if DEBUG:
+                    if DEBUG or local_debug:
                         click.echo(f"\n{Fore.MAGENTA}DEBUG RAW DATA: {data_str}{Style.RESET_ALL}")
 
                     try:
@@ -333,28 +347,26 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                         if isinstance(data, dict) and "chunk" in data and isinstance(data["chunk"], str) and data["chunk"].startswith("DEBUG:"):
                             continue
 
+                        # Log the data type we received for debugging
+                        if local_debug:
+                            click.echo(f"{Fore.MAGENTA}DEBUG: Data keys = {list(data.keys())}{Style.RESET_ALL}")
+
                         # Handle different types of chunks
                         if "content" in data:
-                            # Text content chunk - display immediately as they arrive
+                            # Text content chunk - accumulate for final display
                             chunk = data["content"]
                             if chunk and chunk not in ["Starting group chat streaming response...", "Processing with Semantic Kernel...", "Group chat streaming complete"]:
-                                if not is_displaying_response:
-                                    # Start displaying the response
-                                    click.echo("\nruntime → ", nl=False)
-                                    is_displaying_response = True
-
-                                # Display the chunk without newline to create streaming effect
-                                click.echo(chunk, nl=False)
-                                sys.stdout.flush()  # Force output to display immediately
-
-                                # Add to accumulated response
-                                current_response += chunk
+                                complete_response += chunk
+                                if local_debug:
+                                    click.echo(f"{Fore.MAGENTA}DEBUG: Added content chunk = {chunk}{Style.RESET_ALL}")
                         elif "chunk" in data:
                             # Skip internal status messages
                             if data["chunk"] in ["Starting group chat streaming response...", "Starting streaming response...", "Processing with Semantic Kernel...", "Streaming complete", "Group chat streaming complete"] or data["chunk"] is None:
                                 # Check if this is the final response
                                 if data.get("complete", False) and "response" in data:
-                                    current_response = data["response"]
+                                    complete_response = data["response"]
+                                    if local_debug:
+                                        click.echo(f"{Fore.MAGENTA}DEBUG: Final response = {data['response']}{Style.RESET_ALL}")
                                     if "conversation_id" in data:
                                         result_conversation_id = data["conversation_id"]
                                     if "agents_used" in data and data["agents_used"]:
@@ -365,65 +377,91 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                             if data.get("complete", False):
                                 # Final response object
                                 if "response" in data:
-                                    current_response = data["response"]
+                                    complete_response = data["response"]
+                                    if local_debug:
+                                        click.echo(f"{Fore.MAGENTA}DEBUG: Final response = {data['response']}{Style.RESET_ALL}")
                                 if "conversation_id" in data:
                                     result_conversation_id = data["conversation_id"]
                                 if "agents_used" in data and data["agents_used"]:
                                     agents_used = data["agents_used"]
                             else:
-                                # Regular chunk - don't display immediately
-                                # (will be displayed in the final runtime response)
+                                # Regular chunk - accumulated for later display
                                 chunk = data["chunk"]
                                 if chunk and not chunk.startswith("DEBUG:") and chunk not in ["Starting group chat streaming response...", "Starting streaming response...", "Processing with Semantic Kernel...", "Streaming complete", "Group chat streaming complete"]:
-                                    current_response += chunk
+                                    complete_response += chunk
+                                    if local_debug:
+                                        click.echo(f"{Fore.MAGENTA}DEBUG: Added chunk = {chunk}{Style.RESET_ALL}")
 
-                        # Handle agent calls
+                        # Handle agent calls in the desired format
                         if "agent_call" in data:
                             agent_id = data["agent_call"]
                             current_agent_id = agent_id
                             current_agent_response = ""
-                            click.echo(f"\nƒ(x) calling {agent_id}...")
-
-                            # Display the query sent to the agent, if available
+                            
+                            # Display the query sent to the agent in the desired format
                             if "agent_query" in data:
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ runtime → {data['agent_query']}{Style.RESET_ALL}")
+                                click.echo(f"\nruntime to {agent_id} → {data['agent_query']}")
+                                if local_debug:
+                                    click.echo(f"{Fore.MAGENTA}DEBUG: Agent call to {agent_id}, query = {data['agent_query']}{Style.RESET_ALL}")
 
-                        # Handle agent responses
+                        # Handle agent responses in the desired format
                         if "agent_response" in data and "agent_id" in data:
                             agent_id = data["agent_id"]
                             response_text = data["agent_response"]
+                            
+                            if local_debug:
+                                click.echo(f"{Fore.MAGENTA}DEBUG: Agent response from {agent_id}, text = {response_text}{Style.RESET_ALL}")
+                            
                             if response_text:
-                                # Only update the current_agent_id if different, but don't print a duplicate call message
-                                # (The agent_call event should have already printed this)
+                                # Only update the current_agent_id if different
                                 if agent_id != current_agent_id:
+                                    if current_agent_response:
+                                        # Print any accumulated response from previous agent
+                                        click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
                                     current_agent_id = agent_id
                                     current_agent_response = ""
 
                                 # Append to current agent response
                                 current_agent_response += response_text
-
-                                # Display agent response with the indented format in gray
-                                click.echo(f" {Fore.WHITE}{Style.DIM}↪ {agent_id} → {response_text}{Style.RESET_ALL}")
+                                
+                                # Check if we should display the accumulated response
+                                # Display on sentence endings, line breaks, or if we've accumulated a lot
+                                if (response_text.endswith('.') or 
+                                    response_text.endswith('!') or 
+                                    response_text.endswith('?') or
+                                    '\n' in response_text or
+                                    len(current_agent_response) > 100):
+                                    click.echo(f"\n{agent_id} to runtime → {current_agent_response}")
+                                    current_agent_response = ""
 
                         # Handle error
                         if "error" in data:
                             click.echo(f"\n{Fore.RED}Error: {data['error']}{Style.RESET_ALL}")
                             return {"error": data["error"]}
                     except json.JSONDecodeError as e:
-                        if verbose:
+                        if verbose or local_debug:
                             click.echo(f"\n{Fore.RED}Error parsing streaming response: {e}{Style.RESET_ALL}")
 
+            # Display any remaining agent response
+            if current_agent_response:
+                click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
+
             # Display the final response
-            if current_response:
+            if complete_response:
                 # Filter out any internal status messages
-                filtered_response = current_response
+                filtered_response = complete_response
                 for status_msg in ["Starting group chat streaming response...", "Starting streaming response...", "Processing with Semantic Kernel...", "Streaming complete", "Group chat streaming complete"]:
                     filtered_response = filtered_response.replace(status_msg, "")
-                click.echo(f"\nruntime → {filtered_response.strip()}")
+                
+                # Only display if we actually have content
+                if filtered_response.strip():
+                    click.echo(f"\nruntime to you → {filtered_response.strip()}")
+                elif local_debug:
+                    click.echo(f"{Fore.MAGENTA}DEBUG: No final response to display{Style.RESET_ALL}")
 
             # Return the complete response
             return {
-                "content": current_response,
+                "content": complete_response,
                 "conversation_id": result_conversation_id,
                 "agents_used": agents_used
             }
@@ -518,15 +556,20 @@ def call_agent_directly(agent_specs: Dict[str, Optional[str]] = None):
 
     # Process each agent
     for agent_id, param in agent_specs.items():
-        click.echo(f"\n{Fore.CYAN}Calling agent: {agent_id}{Style.RESET_ALL}")
+        content = param if param else "Hello"
+        
+        # Display the direct call in the conversation format
+        click.echo(f"\nyou → {content}")
+        click.echo(f"\nruntime to {agent_id} → {content}")
 
         # Get agent endpoint
         endpoint = None
         if agent_id in agents_info:
             endpoint = agents_info[agent_id]["endpoint"]
-            click.echo(f"Agent: {agents_info[agent_id]['name']}")
-            click.echo(f"Description: {agents_info[agent_id]['description']}")
-            click.echo(f"Capabilities: {', '.join(agents_info[agent_id]['capabilities'])}")
+            if DEBUG:
+                click.echo(f"Agent: {agents_info[agent_id]['name']}")
+                click.echo(f"Description: {agents_info[agent_id]['description']}")
+                click.echo(f"Capabilities: {', '.join(agents_info[agent_id]['capabilities'])}")
 
         if not endpoint:
             # Try default endpoints based on agent ID
@@ -537,9 +580,6 @@ def call_agent_directly(agent_specs: Dict[str, Optional[str]] = None):
             else:
                 click.echo(f"{Fore.RED}Unknown agent ID and runtime not available to look up endpoint.{Style.RESET_ALL}")
                 continue
-
-        # Prepare message content
-        content = param if param else "Hello"
 
         # Prepare message payload
         message = {
@@ -554,14 +594,17 @@ def call_agent_directly(agent_specs: Dict[str, Optional[str]] = None):
 
         # Send request to agent
         try:
-            click.echo(f"Sending to {endpoint}: {content}")
+            if DEBUG:
+                click.echo(f"Sending to {endpoint}: {content}")
+                
             response = requests.post(endpoint, json=message)
             response.raise_for_status()
             result = response.json()
 
-            # Display response
-            click.echo(f"\n{Fore.GREEN}Response from {agent_id}:{Style.RESET_ALL}")
-            click.echo(f"{result.get('content', 'No content')}")
+            # Display response in the conversation format
+            response_content = result.get('content', 'No content')
+            click.echo(f"\n{agent_id} to runtime → {response_content}")
+            click.echo(f"\nruntime to you → {response_content}")
 
         except requests.exceptions.RequestException as e:
             click.echo(f"{Fore.RED}Error communicating with agent {agent_id}: {e}{Style.RESET_ALL}")
@@ -590,7 +633,7 @@ def interactive_mode():
 
     while True:
         try:
-            # Get user input
+            # Get user input with the new format
             user_input = click.prompt("you → ", type=str, show_default=False, prompt_suffix="")
 
             # Process special commands
@@ -641,7 +684,7 @@ def interactive_mode():
                     agent_ids = [agent_id.strip() for agent_id in agents_str.split(",") if agent_id.strip()]
 
                     if runtime_available and agent_ids:
-                        click.echo(f"Starting group chat with agents: {', '.join(agent_ids)}")
+                        # No need to echo the query here as the streaming function will do it
                         # Use streaming group chat query
                         result = send_streaming_group_chat_query(query, agent_ids=agent_ids, conversation_id=conversation_id)
 
@@ -664,6 +707,7 @@ def interactive_mode():
                     click.echo(f"{Fore.YELLOW}Try using 'direct <agent-id>' to call agents directly.{Style.RESET_ALL}")
                     continue
 
+                # Don't need to echo user query as it will be handled in the streaming function
                 # Use streaming query instead of regular query
                 result = send_streaming_query(user_input, conversation_id=conversation_id)
 
