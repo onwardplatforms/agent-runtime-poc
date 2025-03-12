@@ -17,7 +17,6 @@ TEST_AGENT_CONFIG = {
     "id": "test-agent",
     "name": "Test Agent",
     "description": "A test agent for unit testing",
-    "capabilities": ["testing", "unit_tests"],
     "endpoint": "http://localhost:9999/api/message"
 }
 
@@ -31,7 +30,6 @@ class TestAgentPlugin:
         assert agent.id == "test-agent"
         assert agent.name == "Test Agent"
         assert agent.description == "A test agent for unit testing"
-        assert agent.capabilities == ["testing", "unit_tests"]
         assert agent.endpoint == "http://localhost:9999/api/message"
 
     def test_generate_request(self):

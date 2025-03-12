@@ -18,7 +18,6 @@ TEST_AGENT_CONFIG_1 = {
     "id": "test-agent-1",
     "name": "Test Agent 1",
     "description": "A test agent for unit testing",
-    "capabilities": ["testing", "unit_tests"],
     "endpoint": "http://localhost:9999/api/message"
 }
 
@@ -26,7 +25,6 @@ TEST_AGENT_CONFIG_2 = {
     "id": "test-agent-2",
     "name": "Test Agent 2",
     "description": "Another test agent for unit testing",
-    "capabilities": ["testing", "integration_tests"],
     "endpoint": "http://localhost:9998/api/message"
 }
 

@@ -138,7 +138,7 @@ The system includes a powerful CLI that supports multiple interaction modes:
 
 Available commands:
 - Type your query directly (e.g., "Say hello in German")
-- `agents` - List available agents and capabilities
+- `agents` - List available agents
 - `direct <agent-id>[:<param>]` - Call specific agent
 - `group <agent-id1>,<agent-id2>... <query>` - Use group chat
 - `exit` - Quit the CLI

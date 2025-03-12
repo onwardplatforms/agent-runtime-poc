@@ -48,7 +48,7 @@ Process a query using multiple agents.
 GET /api/agents
 ```
 
-List all available agents and their capabilities.
+List all available agents.
 
 ### Get Conversation History
 ```http

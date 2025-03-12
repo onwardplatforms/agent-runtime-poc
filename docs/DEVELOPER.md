@@ -220,7 +220,6 @@ class AgentPlugin:
         self.id = agent_config["id"]
         self.name = agent_config["name"]
         self.description = agent_config["description"]
-        self.capabilities = agent_config["capabilities"]
         self.endpoint = agent_config["endpoint"]
         
     @kernel_function(

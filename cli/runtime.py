@@ -536,7 +536,6 @@ def call_agent_directly(agent_specs: Dict[str, Optional[str]] = None):
             endpoint = agents_info[agent_id]["endpoint"]
             click.echo(f"Agent: {agents_info[agent_id]['name']}")
             click.echo(f"Description: {agents_info[agent_id]['description']}")
-            click.echo(f"Capabilities: {', '.join(agents_info[agent_id]['capabilities'])}")
 
         if not endpoint:
             # Try default endpoints based on agent ID
@@ -623,7 +622,6 @@ def interactive_mode():
                         for agent in agents_response.get("agents", []):
                             click.echo(f"- {agent['name']} ({agent['id']})")
                             click.echo(f"  Description: {agent['description']}")
-                            click.echo(f"  Capabilities: {', '.join(agent['capabilities'])}")
                             click.echo("")
                     else:
                         click.echo(f"{Fore.RED}Error retrieving agents: {agents_response['error']}{Style.RESET_ALL}")
@@ -767,7 +765,6 @@ def agents():
         for agent in agents_response.get("agents", []):
             click.echo(f"  {agent['name']} ({agent['id']})")
             click.echo(f"    Description: {agent['description']}")
-            click.echo(f"    Capabilities: {', '.join(agent['capabilities'])}")
             click.echo(f"    Endpoint: {agent['endpoint']}")
             click.echo("")
     else:

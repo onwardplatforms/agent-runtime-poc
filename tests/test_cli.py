@@ -137,8 +137,8 @@ class TestCLI:
         with patch("cli.runtime.list_agents") as mock_list_agents:
             mock_list_agents.return_value = {
                 "agents": [
-                    {"id": "agent1", "name": "Agent 1", "description": "Test agent 1", "capabilities": ["cap1"], "endpoint": "http://localhost:5001"},
-                    {"id": "agent2", "name": "Agent 2", "description": "Test agent 2", "capabilities": ["cap2"], "endpoint": "http://localhost:5002"}
+                    {"id": "agent1", "name": "Agent 1", "description": "Test agent 1", "endpoint": "http://localhost:5001"},
+                    {"id": "agent2", "name": "Agent 2", "description": "Test agent 2", "endpoint": "http://localhost:5002"}
                 ]
             }
 
