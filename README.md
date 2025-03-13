@@ -209,9 +209,16 @@ Agents are configured in `agents.json`:
     "name": "Hello Agent",
     "description": "Generates greetings in different languages",
     "capabilities": ["greeting", "hello_in_different_languages"],
+    "conversation_starters": [
+        "Say hello in Spanish",
+        "Generate a formal greeting in Japanese",
+        "How do I greet someone in German?"
+    ],
     "endpoint": "http://localhost:5001/api/message"
 }
 ```
+
+Each agent can have up to three "conversation_starters" which are example queries that showcase the agent's capabilities. These will be displayed in the Web UI to help users get started with appropriate queries.
 
 ### API Endpoints
 

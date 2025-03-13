@@ -11,6 +11,7 @@
                 "greeting",
                 "hello_in_different_languages"
             ],
+            "conversation_starters": [],
             "endpoint": "http://localhost:5001/api/message"
         },
         {
@@ -21,12 +22,18 @@
                 "farewell",
                 "goodbye_in_different_languages"
             ],
+            "conversation_starters": [],
             "endpoint": "http://localhost:5002/api/message"
         },
         {
             "id": "math-agent",
             "name": "Math Agent",
             "description": "Performs mathematical calculations including addition, subtraction, multiplication, division, square roots, powers, and percentages. Use for all math calculations.",
+            "conversation_starters": [
+                "A number leaves a remainder of 7 when divided by 23. When multiplied by 5, the result leaves a remainder of 1 when divided by 23. What is the number?",
+                "A 5 kg ball is dropped from 50 meters. Air slows it down with a force of 0.2 times its speed. How fast is it falling after 5 seconds?",
+                "A factory makes two types of batteries. 60% have a 5% defect rate, and 40% have a 10% defect rate. If a battery is defective, what is the chance it is from the second type?"
+            ],
             "endpoint": "http://localhost:5004/api/message"
         }
     ]

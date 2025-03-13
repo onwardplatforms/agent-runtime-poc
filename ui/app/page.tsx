@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Chat } from "@/components/chat";
+import { useEffect, useState, useRef } from "react";
+import { Chat, ChatRef } from "@/components/chat";
 import { testApiConnection } from "@/lib/api";
 import { AlertCircle, Info } from "lucide-react";
 
 export default function Home() {
     const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
     const [apiStatusMessage, setApiStatusMessage] = useState<string>("");
+    const chatRef = useRef<ChatRef>(null);
 
     useEffect(() => {
         const checkApi = async () => {
@@ -21,11 +22,22 @@ export default function Home() {
         return () => clearInterval(interval);
     }, []);
 
+    const handleReset = () => {
+        if (chatRef.current) {
+            chatRef.current.reset();
+        }
+    };
+
     return (
         <main className="flex h-screen flex-col bg-[#343541]">
             <header className="fixed top-0 left-0 right-0 z-10 h-12 flex items-center border-b border-[#40414f] bg-[#343541]">
                 <div className="max-w-3xl mx-auto px-4 w-full flex items-center justify-between">
-                    <span className="text-sm font-medium text-blue-400">Agent Chat</span>
+                    <span
+                        className="text-sm font-medium text-blue-400 cursor-pointer hover:text-blue-300 transition-colors"
+                        onClick={handleReset}
+                    >
+                        Agent Chat
+                    </span>
                     <div className="flex items-center gap-2 text-xs text-gray-400">
                         <div className={`h-2 w-2 rounded-full ${apiAvailable === null ? 'bg-yellow-500' :
                             apiAvailable ? 'bg-blue-400' : 'bg-red-500'
@@ -48,7 +60,7 @@ export default function Home() {
                     </div>
                 )}
                 <div className="flex-1 h-full">
-                    <Chat />
+                    <Chat ref={chatRef} />
                 </div>
             </div>
         </main>

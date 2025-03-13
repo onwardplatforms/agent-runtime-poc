@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { ChatInput } from "@/components/chat-input";
 import { AgentCallMessage, AgentResponseMessage, Message } from "@/components/message";
 import { StreamChunk, streamQuery } from "@/lib/api";
-import { Loader2, ArrowDown } from "lucide-react";
+import { Loader2, ArrowDown, Zap } from "lucide-react";
 
 // Inline simplified LoadingDots component since we're removing dependencies
 function LoadingDots() {
@@ -17,6 +17,15 @@ function LoadingDots() {
         </div>
     );
 }
+
+type Agent = {
+    id: string;
+    name: string;
+    description: string;
+    capabilities: string[];
+    conversation_starters?: string[];
+    endpoint: string;
+};
 
 type ChatMessage = {
     id: string;
@@ -41,7 +50,12 @@ type AgentResponse = {
     userMessageId: string;
 };
 
-export function Chat() {
+// Define a ref type that exposes the reset method
+export type ChatRef = {
+    reset: () => void;
+};
+
+export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [agentCalls, setAgentCalls] = useState<AgentCall[]>([]);
     const [agentResponses, setAgentResponses] = useState<AgentResponse[]>([]);
@@ -54,13 +68,91 @@ export function Chat() {
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [shouldShowScrollButton, setShouldShowScrollButton] = useState(false);
     const [lastUserMessageTimestamp, setLastUserMessageTimestamp] = useState<number>(0);
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [isLoadingAgents, setIsLoadingAgents] = useState(false);
     const welcomeTitleRef = useRef<HTMLHeadingElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-    // Initialize conversation
+    // Expose the reset method to the parent component through the ref
+    useImperativeHandle(ref, () => ({
+        reset: () => {
+            // Clear all chat state
+            setMessages([]);
+            setAgentCalls([]);
+            setAgentResponses([]);
+            setIsProcessing(false);
+            setProcessingMessageIds(new Set());
+            setCurrentMessageId(null);
+
+            // Generate a new conversation ID
+            const newConversationId = uuidv4();
+            setConversationId(newConversationId);
+
+            console.log("Chat reset to initial state with new conversation ID:", newConversationId);
+        }
+    }));
+
+    // Initialize conversation and fetch agents
     useEffect(() => {
         setConversationId(uuidv4());
         setIsInitialized(true);
+
+        // Fetch agents data including conversation starters
+        const fetchAgents = async () => {
+            setIsLoadingAgents(true);
+            try {
+                console.log("Fetching agents from API...");
+                const response = await fetch('http://localhost:5003/api/agents', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    mode: 'cors'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log("Complete API response:", data);
+
+                    if (data.agents && Array.isArray(data.agents)) {
+                        console.log(`Found ${data.agents.length} agents`);
+
+                        // Map the agents with explicit conversation_starters field to ensure correct property name
+                        const mappedAgents = data.agents.map((a: any) => ({
+                            id: a.id,
+                            name: a.name,
+                            description: a.description,
+                            capabilities: a.capabilities || [],
+                            conversation_starters: a.conversation_starters || [],
+                            endpoint: a.endpoint
+                        }));
+
+                        console.log("Mapped agents with conversation starters:",
+                            mappedAgents.map((a: Agent) => ({
+                                id: a.id,
+                                name: a.name,
+                                starters: a.conversation_starters
+                            }))
+                        );
+
+                        setAgents(mappedAgents);
+                    } else {
+                        console.error("Invalid agents data format:", data);
+                    }
+                } else {
+                    console.error("Failed to fetch agents:", response.status, response.statusText);
+                    const errorText = await response.text();
+                    console.error("Error details:", errorText);
+                }
+            } catch (error) {
+                console.error("Failed to fetch agents:", error);
+            } finally {
+                setIsLoadingAgents(false);
+            }
+        };
+
+        fetchAgents();
     }, []);
 
     // Listen for scroll events to update button state
@@ -572,6 +664,11 @@ export function Chat() {
         }
     }, [messages.length, messagesContainerRef.current]);
 
+    // Helper to handle clicking on a conversation starter
+    const handleConversationStarter = (starter: string) => {
+        handleSendMessage(starter);
+    };
+
     // Show loading state while initializing
     if (!isInitialized) {
         return (
@@ -596,7 +693,7 @@ export function Chat() {
                 <div className="max-w-3xl mx-auto">
                     {messages.length === 0 ? (
                         <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-                            <div className="text-center max-w-md p-8 relative">
+                            <div className="text-center w-full max-w-3xl p-8 relative">
                                 <h2
                                     ref={welcomeTitleRef}
                                     className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent pb-1 tracking-tight"
@@ -606,9 +703,51 @@ export function Chat() {
                                 <p className="text-xl text-gray-400 mt-4 leading-relaxed">
                                     Start a conversation by sending a message below.
                                 </p>
-                                <div className="mt-6 text-sm text-gray-500">
-                                    <div className="flex items-center justify-center gap-2 opacity-70">
-                                        <span>Try asking about math, coding, or general knowledge</span>
+
+                                {/* Conversation starters section */}
+                                <div className="mt-8 w-full">
+                                    <div className="space-y-3 w-full">
+                                        {isLoadingAgents ? (
+                                            <div className="flex justify-center py-4">
+                                                <LoadingDots />
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {/* Conversation starters in a horizontal row with equal sizing */}
+                                                <div className="grid grid-cols-3 gap-8 mt-4 w-full">
+                                                    {(() => {
+                                                        // Collect all starters from all agents
+                                                        const allStarters = agents.flatMap(agent =>
+                                                            (agent.conversation_starters || []).map(starter => ({
+                                                                agentId: agent.id,
+                                                                text: starter
+                                                            }))
+                                                        );
+
+                                                        console.log("All available starters:", allStarters);
+
+                                                        // Randomly shuffle the starters
+                                                        const shuffled = [...allStarters].sort(() => 0.5 - Math.random());
+
+                                                        // Take the first 3 (or fewer if less are available)
+                                                        const selected = shuffled.slice(0, 3);
+
+                                                        console.log("Selected random starters:", selected);
+
+                                                        // Return the buttons for the selected starters
+                                                        return selected.map((starter, idx) => (
+                                                            <button
+                                                                key={`random-starter-${idx}`}
+                                                                onClick={() => handleConversationStarter(starter.text)}
+                                                                className="w-full h-full min-h-[120px] py-8 px-8 bg-[#40414f] hover:bg-[#4a4b59] rounded-xl text-white text-base transition-colors flex flex-col justify-center"
+                                                            >
+                                                                <div className="text-center">{starter.text}</div>
+                                                            </button>
+                                                        ));
+                                                    })()}
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -672,4 +811,4 @@ export function Chat() {
             </div>
         </div>
     );
-} 
+}); 

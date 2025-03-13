@@ -11,6 +11,7 @@ This is the web-based user interface for the Agent Runtime system. The UI provid
 - Scrollable chat interface with scroll-to-bottom button
 - Elegant welcome screen with interactive gradient effect
 - Agent messaging system with clear visual distinction between components
+- Smart conversation starters based on agent capabilities
 
 ## Getting Started
 
@@ -78,6 +79,15 @@ The UI is built with:
 - [Lucide React](https://lucide.dev) - Icon set
 - [UUID](https://github.com/uuidjs/uuid) - For generating unique IDs
 - Custom streaming API integration with Agent Runtime
+
+## Conversation Starters
+
+When starting a new chat, the UI displays suggested conversation starters to help users interact with the system. These starters come from:
+
+1. A general "What can you do?" prompt that gives an overview of system capabilities
+2. Agent-specific starters defined in `agents.json` for each agent
+   
+Each agent can define up to three conversation starters that showcase its capabilities. These are displayed as clickable buttons that automatically populate and send the query, providing an interactive onboarding experience.
 
 ## API Integration
 

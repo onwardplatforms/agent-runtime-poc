@@ -335,12 +335,14 @@ async def list_agents(runtime: AgentRuntime = Depends(get_runtime)):
                 "name": agent.name,
                 "description": agent.description,
                 "capabilities": agent.capabilities,
+                "conversation_starters": agent.conversation_starters,
                 "endpoint": agent.endpoint
             })
 
         return {"agents": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listing agents: {str(e)}")
+        logger.error(f"Error listing agents: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list agents: {str(e)}")
 
 
 @app.get("/")

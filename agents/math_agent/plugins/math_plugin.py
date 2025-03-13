@@ -132,3 +132,34 @@ class MathPlugin:
             return math.log(input)  # Natural logarithm
         else:
             return math.log(input, base)  # Logarithm with custom base 
+        
+    @kernel_function(name="Modulo", description="Finds the remainder of division of one number by another.")
+    def modulo(
+        self,
+        input: Annotated[int, "the number to be divided"],
+        amount: Annotated[int, "the divisor"],
+    ) -> Annotated[int, "the remainder of the division"]:
+        """Returns the remainder of division."""
+        print(f"ƒ(x) calling modulo({input}, {amount})")
+        if amount == 0:
+            raise ValueError("Cannot modulo by zero.")
+        return input % amount
+    
+    @kernel_function(name="ModularInverse", description="Finds the modular inverse of a number modulo another number.")
+    def modular_inverse(
+        self,
+        input: Annotated[int, "the number to find the modular inverse of"],
+        modulus: Annotated[int, "the modulus"],
+    ) -> Annotated[int, "the modular inverse of the number modulo the given modulus"]:
+        """Returns the modular inverse of input modulo modulus using brute-force search."""
+        print(f"ƒ(x) calling modular_inverse({input}, {modulus})")
+
+        # Ensure input is within modulo range
+        input = input % modulus
+        
+        # Brute force search for modular inverse
+        for x in range(1, modulus):
+            if (input * x) % modulus == 1:
+                return x
+
+        raise ValueError(f"No modular inverse exists for {input} mod {modulus}.")
