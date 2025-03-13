@@ -22,6 +22,12 @@
                 "goodbye_in_different_languages"
             ],
             "endpoint": "http://localhost:5002/api/message"
+        },
+        {
+            "id": "math-agent",
+            "name": "Math Agent",
+            "description": "Performs mathematical calculations including addition, subtraction, multiplication, division, square roots, powers, and percentages. Use for all math calculations.",
+            "endpoint": "http://localhost:5004/api/message"
         }
     ]
 }

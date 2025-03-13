@@ -281,7 +281,7 @@ class AgentRuntime:
                 logger.info("Adding OpenAI chat completion service")
                 chat_service = OpenAIChatCompletion(
                     service_id="chat-gpt",
-                    ai_model_id="gpt-3.5-turbo",
+                    ai_model_id="gpt-4o",
                     api_key=api_key
                 )
                 self.kernel.add_service(chat_service)
@@ -366,19 +366,20 @@ class AgentRuntime:
         system_message = """
         You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
 
-        1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
-        2. EFFICIENCY: Only invoke agent functions when their specific capabilities are needed to address the query
-        3. DIRECT RESPONSE: Answer general knowledge questions, math problems, and common queries directly without calling agents
-        4. CLARITY: Provide coherent, unified responses that seamlessly integrate information from any agents you call
+        1. COORDINATION: Look at what agents you have access to and determine which one is the best fit for the user's question or if you should answer directly
+        2. DETAILED COMMUNICATION: When calling an agent, provide the FULL CONTEXT of the user's question, not just isolated formulas or parts
+        3. PROBLEM DESCRIPTION: Describe the complete problem to the agent, including all relevant details the user provided
+        4. CLARITY: Frame queries to agents as requests for help solving a specific problem, not as commands to perform operations
         5. INTERACTION: If a user query is ambiguous or lacks necessary details, ask follow-up questions to clarify before proceeding
-        6. TRANSPARENCY: When you call an agent, explain to the user which agent you're calling and why
+        6. CONSOLIDATION: Integrate agent responses into a coherent answer without unnecessary repetition
 
         IMPORTANT GUIDELINES:
-        - Each agent function has specific, narrow capabilities - only call them for tasks within their expertise
-        - For general knowledge, factual information, calculations, or reasoning tasks, respond directly
-        - If uncertain whether an agent can help, err on the side of answering directly
-        - If a user query requires information you don't have, acknowledge limitations and ask for clarification
-        - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
+        - When calling specialized agents like the math agent, frame requests as "The user wants to solve [complete problem]. Can you help with this?"
+        - Allow agents to break down problems themselves rather than pre-fragmenting tasks
+        - For each agent call, share the complete context and details from the user's question
+        - Let agents determine their own approach to solving problems within their domain
+        - Keep your final responses to users concise and focused on the answer, not the process
+        - In final responses to users, don't repeat the agent's full chain of reasoning unless specifically requested
         """
         chat_history.add_system_message(system_message)
 
@@ -579,18 +580,19 @@ class AgentRuntime:
                 You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
 
                 1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
-                2. EFFICIENCY: Only invoke agent functions when their specific capabilities are needed to address the query
-                3. DIRECT RESPONSE: Answer general knowledge questions, math problems, and common queries directly without calling agents
-                4. CLARITY: Provide coherent, unified responses that seamlessly integrate information from any agents you call
+                2. DETAILED COMMUNICATION: When calling an agent, provide the FULL CONTEXT of the user's question, not just isolated formulas or parts
+                3. PROBLEM DESCRIPTION: Describe the complete problem to the agent, including all relevant details the user provided
+                4. CLARITY: Frame queries to agents as requests for help solving a specific problem, not as commands to perform operations
                 5. INTERACTION: If a user query is ambiguous or lacks necessary details, ask follow-up questions to clarify before proceeding
-                6. TRANSPARENCY: When you call an agent, explain to the user which agent you're calling and why
+                6. CONSOLIDATION: Integrate agent responses into a coherent answer without unnecessary repetition
 
                 IMPORTANT GUIDELINES:
-                - Each agent function has specific, narrow capabilities - only call them for tasks within their expertise
-                - For general knowledge, factual information, calculations, or reasoning tasks, respond directly
-                - If uncertain whether an agent can help, err on the side of answering directly
-                - If a user query requires information you don't have, acknowledge limitations and ask for clarification
-                - Always prioritize providing accurate, helpful responses over unnecessarily calling agent functions
+                - When calling specialized agents like the math agent, frame requests as "The user wants to solve [complete problem]. Can you help with this?"
+                - Allow agents to break down problems themselves rather than pre-fragmenting tasks
+                - For each agent call, share the complete context and details from the user's question
+                - Let agents determine their own approach to solving problems within their domain
+                - Keep your final responses to users concise and focused on the answer, not the process
+                - In final responses to users, don't repeat the agent's full chain of reasoning unless specifically requested
                 """
                 debug_print("DEBUG: Adding system message to chat history")
                 chat_history.add_system_message(system_message)

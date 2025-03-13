@@ -168,7 +168,7 @@ public class GoodbyeAgent
                 MaxTokens = 50
             };
             
-            var response = await _openAIClient.GetChatCompletionsAsync("gpt-3.5-turbo", chatCompletionsOptions);
+            var response = await _openAIClient.GetChatCompletionsAsync("gpt-4o", chatCompletionsOptions);
             var responseText = response.Value.Choices[0].Message.Content;
             
             return responseText?.Trim() ?? $"Goodbye! (in {language})";
