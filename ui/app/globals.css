@@ -54,4 +54,149 @@
     .message-content ol {
         @apply list-decimal;
     }
+
+    /* Combined Markdown and LaTeX styling */
+    .markdown-content {
+        @apply text-base;
+    }
+
+    /* Handling of basic markdown elements */
+    .markdown-content h1 {
+        @apply text-xl font-bold mt-4 mb-2;
+    }
+
+    .markdown-content h2 {
+        @apply text-lg font-bold mt-3 mb-2;
+    }
+
+    .markdown-content h3 {
+        @apply text-base font-semibold mt-3 mb-1;
+    }
+
+    .markdown-content p {
+        @apply my-2;
+    }
+
+    .markdown-content a {
+        @apply text-blue-400 hover:text-blue-300 underline;
+    }
+
+    .markdown-content ul {
+        @apply list-disc pl-6 my-2;
+    }
+
+    .markdown-content ol {
+        @apply list-decimal pl-6 my-2;
+    }
+
+    .markdown-content blockquote {
+        @apply border-l-4 border-gray-600 pl-4 italic my-3;
+    }
+
+    .markdown-content code.inline-code {
+        @apply bg-[#2d2d3a] px-1 py-0.5 rounded text-sm font-mono;
+    }
+
+    .markdown-content code.block-code {
+        @apply block bg-[#2d2d3a] p-3 rounded-md overflow-x-auto my-2 text-sm font-mono;
+    }
+
+    .markdown-content table {
+        @apply border-collapse my-3 w-full;
+    }
+
+    .markdown-content th,
+    .markdown-content td {
+        @apply border border-gray-700 px-3 py-1;
+    }
+
+    .markdown-content th {
+        @apply bg-gray-800;
+    }
+
+    /* LaTeX specific styling */
+    .latex-content {
+        font-size: 1rem;
+    }
+
+    .latex-content .katex-display {
+        margin: 1rem 0 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        background-color: rgba(45, 45, 58, 0.4);
+        border-radius: 6px;
+        padding: 1rem;
+    }
+
+    /* Override KaTeX's default styling for the display environment */
+    .katex-display {
+        margin: 0 !important;
+    }
+
+    /* Add negative margin to compensate for extra space */
+    .latex-content .katex-display+* {
+        margin-top: -0.5rem;
+    }
+
+    .latex-content .katex {
+        font-size: 1.1em;
+    }
+
+    /* Make sure inline LaTeX aligns properly with text */
+    .latex-content .katex-inline,
+    .inline-latex {
+        display: inline-flex !important;
+        align-items: center !important;
+        vertical-align: middle !important;
+        line-height: normal !important;
+        margin: 0 0.15em !important;
+        white-space: nowrap !important;
+    }
+
+    /* Fix for specific patterns in LaTeX that cause newlines */
+    .latex-content .katex-html {
+        white-space: normal !important;
+        display: inline !important;
+    }
+
+    /* Additional styling for simple variables */
+    .inline-latex.simple-var {
+        display: inline !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .inline-latex.simple-var .katex {
+        display: inline !important;
+    }
+
+    /* Fix for parentheses around LaTeX */
+    .inline-latex+span,
+    span+.inline-latex {
+        display: inline !important;
+        white-space: normal !important;
+    }
+
+    /* Wrapper for inline LaTeX to maintain text flow */
+    .inline-latex-wrapper {
+        display: inline !important;
+        white-space: nowrap !important;
+        vertical-align: baseline !important;
+    }
+
+    /* Ensure LaTeX content stays inline */
+    .inline-latex-wrapper .inline-latex {
+        display: inline-flex !important;
+        vertical-align: middle !important;
+    }
+
+    /* Fix for parentheses and spacing around LaTeX content */
+    .inline-latex-wrapper.simple-var {
+        margin: 0 !important;
+    }
+
+    /* Add a class for post-render adjustments */
+    .inline-latex.rendered {
+        vertical-align: middle !important;
+    }
 }
