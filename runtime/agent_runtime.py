@@ -49,6 +49,7 @@ class AgentPlugin:
         self.endpoint = agent_config["endpoint"]
         self.description = agent_config.get("description", f"Call the {self.name} agent")
         self.capabilities = agent_config.get("capabilities", [])
+        self.conversation_starters = agent_config.get("conversation_starters", [])
         logger.debug(f"Initialized AgentPlugin: {self.id} with endpoint {self.endpoint}")
 
     def generate_request(self, content: str, sender_id: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:

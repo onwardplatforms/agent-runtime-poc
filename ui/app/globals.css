@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        @apply bg-[#343541] text-gray-100;
+    }
+
+    body {
+        @apply bg-[#343541] text-gray-100;
+    }
+}
+
+@layer components {
+    .message-content {
+        @apply text-base max-w-none;
+    }
+
+    /* Message styling - keeping all backgrounds consistent */
+    .user-message,
+    .ai-message,
+    .system-message {
+        @apply bg-[#343541];
+    }
+
+    /* User message bubble */
+    .user-bubble {
+        @apply bg-[#40414f] rounded-3xl px-4 py-3 text-base;
+    }
+
+    /* Code blocks and formatting */
+    .message-content pre {
+        @apply bg-[#2d2d3a] p-3 rounded-md overflow-x-auto my-2 text-sm;
+    }
+
+    .message-content code {
+        @apply bg-[#2d2d3a] px-1 py-0.5 rounded text-sm;
+    }
+
+    .message-content p {
+        @apply my-2;
+    }
+
+    .message-content ul,
+    .message-content ol {
+        @apply my-2 pl-6;
+    }
+
+    .message-content ul {
+        @apply list-disc;
+    }
+
+    .message-content ol {
+        @apply list-decimal;
+    }
+}
