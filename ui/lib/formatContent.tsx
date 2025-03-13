@@ -138,7 +138,7 @@ export function ContentRenderer({ content }: { content: string }) {
 
         // First, extract and store all inline LaTeX
         let inlineCount = 0;
-        processedContent = content.replace(/\\\((.*?)\\\)/g, (match, latexContent) => {
+        processedContent = content.replace(/\\\(([^]*?)\\\)/g, (match, latexContent) => {
             const marker = `INLINE_LATEX_${uniqueId}_${inlineCount++}`;
             inlineLatexMap[marker] = latexContent;
             return marker;
@@ -279,6 +279,40 @@ export function ContentRenderer({ content }: { content: string }) {
                 });
 
                 return <li>{processedChildren}</li>;
+            },
+            // Handle table cells with LaTeX markers
+            td({ children }: any) {
+                if (!children) return <td></td>;
+
+                // Convert children to array if it's not
+                const childrenArray = Array.isArray(children) ? children : [children];
+
+                // Process each child to handle LaTeX markers
+                const processedChildren = childrenArray.map((child, index) => {
+                    if (typeof child !== 'string') return child;
+
+                    // Check if this text contains any of our LaTeX markers
+                    return replaceLatexMarkers(child, index, uniqueId, inlineLatexMap);
+                });
+
+                return <td>{processedChildren}</td>;
+            },
+            // Handle table header cells with LaTeX markers
+            th({ children }: any) {
+                if (!children) return <th></th>;
+
+                // Convert children to array if it's not
+                const childrenArray = Array.isArray(children) ? children : [children];
+
+                // Process each child to handle LaTeX markers
+                const processedChildren = childrenArray.map((child, index) => {
+                    if (typeof child !== 'string') return child;
+
+                    // Check if this text contains any of our LaTeX markers
+                    return replaceLatexMarkers(child, index, uniqueId, inlineLatexMap);
+                });
+
+                return <th>{processedChildren}</th>;
             }
         };
 
