@@ -79,13 +79,41 @@ export async function checkApiAvailability(): Promise<boolean> {
     }
 }
 
-export async function streamQuery(request: ChatRequest, onChunk: (chunk: StreamChunk) => void): Promise<void> {
+export async function streamQuery(
+    request: ChatRequest,
+    onChunk: (chunk: StreamChunk) => void,
+    abortController?: AbortController
+): Promise<void> {
+    // Use the provided abortController or create a new one
+    const controller = abortController || new AbortController();
+
     try {
         // Check API availability first
         const isAvailable = await checkApiAvailability();
         if (!isAvailable) {
             throw new Error('API server is not available. Please make sure it is running at ' + API_BASE_URL);
         }
+
+        // Add abort listener to send cancellation signal to the server
+        controller.signal.addEventListener('abort', async () => {
+            try {
+                console.log('Sending cancellation signal to server...');
+                // Try to send cancellation signal to the backend
+                await fetch(`${API_BASE_URL}/api/cancel`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        conversation_id: request.conversation_id
+                    }),
+                    mode: 'cors',
+                    // Don't use the same abort controller for this request
+                }).catch(err => console.warn('Failed to send cancellation signal:', err));
+            } catch (error) {
+                console.warn('Error sending cancellation to server:', error);
+            }
+        });
 
         const response = await fetch(`${API_BASE_URL}/api/query`, {
             method: 'POST',
@@ -99,6 +127,7 @@ export async function streamQuery(request: ChatRequest, onChunk: (chunk: StreamC
             }),
             credentials: 'omit',
             mode: 'cors',
+            signal: controller.signal, // Add the abort signal to the fetch request
         });
 
         if (!response.ok) {
@@ -134,11 +163,20 @@ export async function streamQuery(request: ChatRequest, onChunk: (chunk: StreamC
             }
         }
     } catch (error) {
-        console.error('Stream query error:', error);
-        onChunk({
-            error: error instanceof Error ? error.message : String(error),
-            complete: true
-        });
+        // Check if this was an abort error
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            console.log('Request aborted by user');
+            onChunk({
+                error: 'Request aborted by user',
+                complete: true
+            });
+        } else {
+            console.error('Stream query error:', error);
+            onChunk({
+                error: error instanceof Error ? error.message : String(error),
+                complete: true
+            });
+        }
     }
 }
 

@@ -72,6 +72,8 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     const [isLoadingAgents, setIsLoadingAgents] = useState(false);
     const welcomeTitleRef = useRef<HTMLHeadingElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const [isRetrying, setIsRetrying] = useState(false);
+    const [abortController, setAbortController] = useState<AbortController | null>(null);
 
     // Expose the reset method to the parent component through the ref
     useImperativeHandle(ref, () => ({
@@ -275,6 +277,9 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         const messageIndex = messages.findIndex(msg => msg.id === messageId);
 
         if (messageIndex !== -1) {
+            // Set the retrying flag to true to prevent conversation starters from showing
+            setIsRetrying(true);
+
             const messageToRetry = messages[messageIndex];
 
             // Reset the conversation state but don't include the message we're retrying
@@ -300,13 +305,37 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                 if (messageToRetry.content) {
                     handleSendMessage(messageToRetry.content);
                 }
+                // Reset the retrying flag
+                setIsRetrying(false);
             }, 100);
+        }
+    };
+
+    const handleStop = () => {
+        console.log("Stopping current request");
+        if (abortController) {
+            abortController.abort();
+            setAbortController(null);
+
+            // Update UI state to show we're no longer processing
+            setIsProcessing(false);
+            setProcessingMessageIds(new Set());
+            setCurrentMessageId(null);
+
+            // Add system message to indicate the request was stopped
+            const stoppedMessage: ChatMessage = {
+                id: uuidv4(),
+                content: "Request stopped by user.",
+                role: "system",
+                timestamp: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, stoppedMessage]);
         }
     };
 
     const handleSendMessage = async (content: string) => {
         // Remove the blocking behavior if isProcessing is true
-        // if (isProcessing) return;
+        if (isProcessing) return;
 
         // Record when user message is sent to prevent button flickering
         setLastUserMessageTimestamp(Date.now());
@@ -333,6 +362,10 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             newSet.add(userMessageId);
             return newSet;
         });
+
+        // Create a new AbortController for this request
+        const controller = new AbortController();
+        setAbortController(controller);
 
         // Don't clear previous agent calls and responses
         // We'll associate new ones with the current message
@@ -480,7 +513,8 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                         responseContent = chunk.response;
                         updateOrAddAssistantMessage(responseContent, chunk.agents_used?.[0], executionTrace);
                     }
-                }
+                },
+                controller // Pass the AbortController to the streamQuery function
             );
         } catch (error) {
             console.error("Error processing query:", error);
@@ -506,6 +540,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             });
 
             setCurrentMessageId(null);
+            setAbortController(null); // Clear the AbortController
         }
     };
 
@@ -691,7 +726,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                 id="messages-container"
             >
                 <div className="max-w-3xl mx-auto">
-                    {messages.length === 0 ? (
+                    {messages.length === 0 && !isRetrying ? (
                         <div className="flex items-center justify-center h-[calc(100vh-200px)]">
                             <div className="text-center w-full max-w-3xl p-8 relative">
                                 <h2
@@ -804,6 +839,8 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                     <div className="max-w-3xl mx-auto px-4">
                         <ChatInput
                             onSend={handleSendMessage}
+                            onStop={handleStop}
+                            isProcessing={isProcessing}
                             placeholder="Ask me anything..."
                         />
                     </div>

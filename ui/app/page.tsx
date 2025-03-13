@@ -33,14 +33,13 @@ export default function Home() {
             <header className="fixed top-0 left-0 right-0 z-10 h-12 flex items-center border-b border-[#40414f] bg-[#343541]">
                 <div className="max-w-3xl mx-auto px-4 w-full flex items-center justify-between">
                     <span
-                        className="text-sm font-medium text-blue-400 cursor-pointer hover:text-blue-300 transition-colors"
-                        onClick={handleReset}
+                        className="text-sm font-medium text-blue-400"
                     >
                         Agent Chat
                     </span>
                     <div className="flex items-center gap-2 text-xs text-gray-400">
                         <div className={`h-2 w-2 rounded-full ${apiAvailable === null ? 'bg-yellow-500' :
-                            apiAvailable ? 'bg-blue-400' : 'bg-red-500'
+                            apiAvailable ? 'bg-green-400' : 'bg-red-500'
                             }`} />
                         <span className="truncate max-w-[180px]">
                             {apiAvailable === null && "Checking API..."}
