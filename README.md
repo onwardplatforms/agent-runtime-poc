@@ -5,6 +5,7 @@ This project demonstrates a multi-agent architecture using a lightweight orchest
 1. **Hello Agent** - A Python-based agent that generates greetings in different languages.
 2. **Goodbye Agent** - A .NET-based agent that generates farewells in different languages.
 3. **Agent Runtime** - A Python-based runtime that orchestrates interactions between agents using Semantic Kernel.
+4. **Web UI** - A Next.js-based user interface for interacting with the agent system.
 
 ## Architecture
 
@@ -12,7 +13,7 @@ The system uses a three-tier architecture:
 
 1. **Standalone Agents**: Independent microservices that provide specific capabilities
 2. **Agent Runtime**: Coordinates agent interactions using Semantic Kernel's function calling
-3. **Client Applications**: CLI and API interfaces for natural interaction
+3. **Client Applications**: CLI, Web UI, and API interfaces for natural interaction
 
 Each layer serves a specific purpose:
 - Agents focus on their specialized tasks (greetings, farewells)
@@ -70,6 +71,7 @@ For detailed information about testing, see [TESTING.md](docs/TESTING.md).
 
 - Python 3.11
 - .NET 7.0 or later
+- Node.js and npm (for the Web UI)
 - `jq` command-line tool for formatting JSON responses (optional but recommended)
 
 ## Setup
@@ -94,32 +96,38 @@ cp .env agents/hello_agent/.env
 cp .env agents/goodbye_agent/.env
 ```
 
-## Running the System
-
-### Quick Start (Recommended)
+### 3. Install UI Dependencies (Optional, for Web UI)
 
 ```bash
-make interactive
+make ui-deps
 ```
 
-This launches the full system with a CLI interface. Try these examples:
+## Running the System
+
+### Quick Start Options
+
 ```bash
-you → Say hello in Spanish                                         # Direct query
-you → group hello-agent,goodbye-agent "Greet in Spanish"          # Group chat
-you → direct hello-agent "Generate a formal greeting in German"    # Agent-specific
+# Start with CLI interface (terminal-based)
+make interactive
+
+# Start with Web UI interface (browser-based)
+make interactive-web
 ```
 
 ### Other Run Options
 
 ```bash
-# Start everything in the background
+# Start all backend components
 make start-all
+
+# Start all backend components and Web UI
+make start-full
 
 # Or start components individually
 make start-hello
 make start-goodbye
 make start-runtime
-make cli
+make ui-dev
 
 # Check component status
 make status
@@ -156,6 +164,26 @@ Available commands:
 ./cli.py direct hello-agent "Say hello in German"
 ```
 
+## Using the Web UI
+
+The web-based interface provides a modern, responsive way to interact with the agent system:
+
+1. Start the backend components and web UI:
+   ```bash
+   make interactive-web
+   ```
+
+2. Open your browser to [http://localhost:3000](http://localhost:3000)
+
+3. Type your query in the chat interface and see real-time responses including agent calls and thinking steps
+
+Features:
+- Modern, responsive UI with dark mode
+- Real-time streaming responses
+- Full visibility into agent calls
+- Persistent conversation history
+- Scrollable chat interface with scroll-to-bottom button
+
 ## Developer Documentation
 
 For technical details about the architecture and implementation, see:
@@ -170,7 +198,7 @@ The runtime uses Semantic Kernel to orchestrate agent interactions:
 2. **Function Calling**: Semantic Kernel determines which agents to call based on the query
 3. **Conversation History**: System maintains context using Semantic Kernel's ChatHistory
 4. **Streaming Support**: Full end-to-end streaming for responsive user experience
-5. **Multiple Interfaces**: API and CLI access points with consistent formatting
+5. **Multiple Interfaces**: API, CLI, and Web UI access points with consistent formatting
 
 ### Agent Configuration
 

@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Agent Runtime Web UI
+
+This is the web-based user interface for the Agent Runtime system. The UI provides a modern, responsive chat interface where users can interact with the agent system and see real-time responses, including agent calls and thinking steps.
+
+## Features
+
+- Modern, responsive UI with dark mode
+- Real-time streaming responses
+- Full visibility into agent calls and execution traces
+- Persistent conversation history
+- Scrollable chat interface with scroll-to-bottom button
+- Elegant welcome screen with interactive gradient effect
+- Agent messaging system with clear visual distinction between components
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js and npm
+- Agent Runtime backend running (see main README.md for instructions)
+
+### Installation
+
+Install dependencies:
+
+```bash
+npm install
+# or from the project root
+make ui-deps
+```
+
+### Development
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# or from the project root
+make ui-dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Production Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Build for production:
 
-## Learn More
+```bash
+npm run build
+# or from the project root
+make ui-build
+```
 
-To learn more about Next.js, take a look at the following resources:
+Start the production server:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run start
+# or from the project root
+make ui-start
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Integrated Startup
 
-## Deploy on Vercel
+For convenience, you can start both the backend agents and the UI with a single command from the project root:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+make interactive-web
+# or
+make start-full
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Technical Details
+
+The UI is built with:
+
+- [Next.js](https://nextjs.org) - React framework
+- [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS framework
+- [Lucide React](https://lucide.dev) - Icon set
+- [UUID](https://github.com/uuidjs/uuid) - For generating unique IDs
+- Custom streaming API integration with Agent Runtime
+
+## API Integration
+
+The UI communicates with the Agent Runtime API at `http://localhost:5003/api/query` for processing queries. It handles:
+
+- User message submissions
+- Real-time streaming responses
+- Agent call visibility
+- Error handling and recovery
+
+For full API documentation, see the main project's [API.md](../docs/API.md).
