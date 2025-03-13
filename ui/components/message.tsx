@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { RefreshCw } from "lucide-react";
+import { LatexRenderer } from "../lib/formatLatex";
 
 type MessageProps = {
     content: string;
@@ -58,7 +59,7 @@ export function Message({ content, role, agentId, timestamp, onRetry, messageId,
                         </button>
                     )}
                     <div className="max-w-[80%] user-bubble">
-                        {content}
+                        <LatexRenderer content={content} />
 
                         {mounted && timestamp && (
                             <div className="mt-1 text-xs text-gray-400">
@@ -76,7 +77,9 @@ export function Message({ content, role, agentId, timestamp, onRetry, messageId,
                             <div className="text-sm text-gray-400 mb-2">
                                 {role === "assistant" ? "Runtime" : (agentId ? `Agent: ${agentId}` : "System")}
                             </div>
-                            <div className="mt-1">{content}</div>
+                            <div className="mt-1">
+                                <LatexRenderer content={content} />
+                            </div>
                         </div>
 
                         {execution_trace && execution_trace.length > 0 && (
@@ -124,7 +127,7 @@ export function AgentCallMessage({ agentId, query }: { agentId: string; query: s
                 <div className="max-w-[90%] text-base message-content">
                     <div className="text-sm font-medium text-gray-400 mb-2">Runtime to {agentId}</div>
                     <div className="text-gray-300">
-                        {query}
+                        <LatexRenderer content={query} />
                     </div>
                     <div className="mt-2 text-xs text-gray-500">
                         <span className="opacity-50">
@@ -172,7 +175,7 @@ export function AgentResponseMessage({ agentId, response }: { agentId: string; r
                     {isExpanded && (
                         <div>
                             <div className="text-gray-200 whitespace-pre-wrap p-2 -ml-2">
-                                {response}
+                                <LatexRenderer content={response} />
                             </div>
                             <button
                                 onClick={() => setIsExpanded(false)}

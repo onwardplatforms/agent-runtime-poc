@@ -594,6 +594,7 @@ class AgentRuntime:
                 - Let agents determine their own approach to solving problems within their domain
                 - Keep your final responses to users concise and focused on the answer, not the process
                 - In final responses to users, don't repeat the agent's full chain of reasoning unless specifically requested
+                - If you want to know more about what an agent can do, you are allowed to first ask the agent to describe its capabilities
                 """
                 debug_print("DEBUG: Adding system message to chat history")
                 chat_history.add_system_message(system_message)
