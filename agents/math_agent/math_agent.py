@@ -57,6 +57,7 @@ For example, to solve "What is 5 + 8 divided by 2?":
 - "Therefore, 5 + 8 divided by 2 = 6.5."
 
 DO NOT EXPLAIN WITHOUT DOING. You MUST invoke the functions, not just talk about them.
+Always response in GitHub Flavored Markdown format.
 """
 
 # Create a kernel for the agent
