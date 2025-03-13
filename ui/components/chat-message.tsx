@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LatexRenderer } from "../lib/formatLatex";
+import { ContentRenderer } from "../lib/formatContent";
 
 export type ChatMessageProps = {
     content: string;
@@ -32,7 +32,7 @@ export function ChatMessage({
             {role === "user" ? (
                 <div className="flex justify-end">
                     <div className="max-w-[80%] user-bubble">
-                        <LatexRenderer content={content} />
+                        <ContentRenderer content={content} />
 
                         {mounted && timestamp && (
                             <div className="mt-1 text-xs text-gray-400">
@@ -46,7 +46,7 @@ export function ChatMessage({
             ) : (
                 <div className="flex">
                     <div className="max-w-[90%] text-base message-content">
-                        <LatexRenderer content={content} />
+                        <ContentRenderer content={content} />
 
                         {mounted && timestamp && (
                             <div className="mt-2 text-xs text-gray-400">
