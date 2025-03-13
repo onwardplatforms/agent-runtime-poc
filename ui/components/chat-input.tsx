@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowUpIcon, SquareIcon } from "lucide-react";
+import { SquareIcon, ArrowUpIcon } from "lucide-react";
+import { WebSpeechRecognition } from "./web-speech-recognition";
 
 type ChatInputProps = {
     onSend: (message: string) => void;
@@ -58,6 +59,24 @@ export function ChatInput({
         }
     };
 
+    const handleTranscription = (text: string) => {
+        // Append new transcription to existing text instead of replacing
+        setInput(currentInput => {
+            // If there's existing text, add a space before new text
+            const separator = currentInput.trim() ? ' ' : '';
+            return currentInput + separator + text;
+        });
+
+        // Auto-resize textarea after updating with transcription
+        if (textareaRef.current) {
+            setTimeout(() => {
+                textareaRef.current!.style.height = "80px";
+                const newHeight = Math.min(textareaRef.current!.scrollHeight, 200);
+                textareaRef.current!.style.height = `${newHeight}px`;
+            }, 0);
+        }
+    };
+
     return (
         <form onSubmit={handleSubmit} className="relative">
             <textarea
@@ -71,24 +90,32 @@ export function ChatInput({
                 rows={1}
                 style={{ height: "80px" }}
             />
-            {isProcessing ? (
-                <button
-                    type="button"
-                    onClick={handleStop}
-                    className="absolute right-4 bottom-[22px] rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 transition-colors"
-                    title="Stop processing"
-                >
-                    <SquareIcon className="h-4 w-4 stroke-[3]" />
-                </button>
-            ) : (
-                <button
-                    type="submit"
-                    disabled={disabled || !input.trim()}
-                    className="absolute right-4 bottom-[22px] rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                    <ArrowUpIcon className="h-5 w-5 stroke-[3]" />
-                </button>
-            )}
+            <div className="absolute right-4 bottom-[22px] flex space-x-2">
+                {/* Web Speech Recognition Button */}
+                <WebSpeechRecognition
+                    onTranscriptionComplete={handleTranscription}
+                    disabled={disabled || isProcessing}
+                />
+
+                {isProcessing ? (
+                    <button
+                        type="button"
+                        onClick={handleStop}
+                        className="rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 transition-colors"
+                        title="Stop processing"
+                    >
+                        <SquareIcon className="h-4 w-4 stroke-[3]" />
+                    </button>
+                ) : (
+                    <button
+                        type="submit"
+                        disabled={disabled || !input.trim()}
+                        className="rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <ArrowUpIcon className="h-5 w-5 stroke-[3]" />
+                    </button>
+                )}
+            </div>
         </form>
     );
 } 
