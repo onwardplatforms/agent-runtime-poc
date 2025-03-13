@@ -3,14 +3,14 @@ fastapi
 uvicorn
 pydantic
 requests
-python-dotenv
+python-dotenv>=0.19.0
 colorama
-flask
+flask>=2.0.0
 click
-pytest
+pytest>=7.0.0
 pytest-asyncio
 httpx
-pytest-cov
+pytest-cov>=4.0.0
 flake8
 mypy
 autoflake
@@ -18,3 +18,4 @@ isort
 autopep8
 types-requests
 types-colorama
+openai>=1.0.0

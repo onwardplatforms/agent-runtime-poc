@@ -16,6 +16,7 @@ class MathPlugin:
         {{math.Multiply}} => Returns the product of input and amount
         {{math.Divide}} => Returns the quotient of input and amount
         {{math.SquareRoot}} => Returns the square root of input
+        {{math.Log}} => Returns the logarithm of input with optional base
     """
 
     @kernel_function(name="Add", description="Adds two numbers together.")
@@ -108,3 +109,26 @@ class MathPlugin:
             exponent = float(exponent)
         
         return input ** exponent 
+
+    @kernel_function(name="Log", description="Calculates the logarithm of a number with an optional base (defaults to natural log).")
+    def log(
+        self,
+        input: Annotated[float, "the number to calculate the logarithm of"],
+        base: Annotated[float, "the base of the logarithm (optional, defaults to e for natural log)"] = math.e,
+    ) -> Annotated[float, "the logarithm of the input"]:
+        """Returns the logarithm of the input with the specified base (defaults to natural log)."""
+        print(f"ƒ(x) calling log({input}, base={base})")
+        if isinstance(input, str):
+            input = float(input)
+        if isinstance(base, str):
+            base = float(base)
+        
+        if input <= 0:
+            raise ValueError("Cannot calculate logarithm of a non-positive number.")
+        if base <= 0 or base == 1:
+            raise ValueError("Logarithm base must be positive and not equal to 1.")
+        
+        if base == math.e:
+            return math.log(input)  # Natural logarithm
+        else:
+            return math.log(input, base)  # Logarithm with custom base 

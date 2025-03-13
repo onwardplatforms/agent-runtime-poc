@@ -175,6 +175,7 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                             # Display the query sent to the agent in the desired format
                             if "agent_query" in data:
                                 click.echo(f"\nruntime to {agent_id} → {data['agent_query']}")
+                                sys.stdout.flush()
 
                         # Handle agent responses in the desired format
                         if "agent_response" in data and "agent_id" in data:
@@ -187,6 +188,7 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                                     if current_agent_response:
                                         # Print any accumulated response from previous agent
                                         click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
+                                        sys.stdout.flush()
                                     current_agent_id = agent_id
                                     current_agent_response = ""
 
@@ -201,23 +203,28 @@ def send_streaming_query(query: str, user_id: str = "cli-user", conversation_id:
                                     '\n' in response_text or
                                     len(current_agent_response) > 100):
                                     click.echo(f"\n{agent_id} to runtime → {current_agent_response}")
+                                    sys.stdout.flush()
                                     current_agent_response = ""
 
                         # Handle error
                         if "error" in data:
                             click.echo(f"\n{Fore.RED}Error: {data['error']}{Style.RESET_ALL}")
+                            sys.stdout.flush()
                             return {"error": data["error"]}
                     except json.JSONDecodeError as e:
                         if verbose:
                             click.echo(f"\n{Fore.RED}Error parsing streaming response: {e}{Style.RESET_ALL}")
+                            sys.stdout.flush()
 
             # Display any remaining agent response
             if current_agent_response:
                 click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
+                sys.stdout.flush()
 
             # Display the final response
             if complete_response:
                 click.echo(f"\nruntime to you → {complete_response.strip()}")
+                sys.stdout.flush()
 
             # Return the complete response
             return {
@@ -401,8 +408,7 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                             # Display the query sent to the agent in the desired format
                             if "agent_query" in data:
                                 click.echo(f"\nruntime to {agent_id} → {data['agent_query']}")
-                                if local_debug:
-                                    click.echo(f"{Fore.MAGENTA}DEBUG: Agent call to {agent_id}, query = {data['agent_query']}{Style.RESET_ALL}")
+                                sys.stdout.flush()
 
                         # Handle agent responses in the desired format
                         if "agent_response" in data and "agent_id" in data:
@@ -418,6 +424,7 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                                     if current_agent_response:
                                         # Print any accumulated response from previous agent
                                         click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
+                                        sys.stdout.flush()
                                     current_agent_id = agent_id
                                     current_agent_response = ""
 
@@ -432,19 +439,23 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                                     '\n' in response_text or
                                     len(current_agent_response) > 100):
                                     click.echo(f"\n{agent_id} to runtime → {current_agent_response}")
+                                    sys.stdout.flush()
                                     current_agent_response = ""
 
                         # Handle error
                         if "error" in data:
                             click.echo(f"\n{Fore.RED}Error: {data['error']}{Style.RESET_ALL}")
+                            sys.stdout.flush()
                             return {"error": data["error"]}
                     except json.JSONDecodeError as e:
                         if verbose or local_debug:
                             click.echo(f"\n{Fore.RED}Error parsing streaming response: {e}{Style.RESET_ALL}")
+                            sys.stdout.flush()
 
             # Display any remaining agent response
             if current_agent_response:
                 click.echo(f"\n{current_agent_id} to runtime → {current_agent_response}")
+                sys.stdout.flush()
 
             # Display the final response
             if complete_response:
@@ -456,8 +467,10 @@ def send_streaming_group_chat_query(query: str, agent_ids: Optional[List[str]] =
                 # Only display if we actually have content
                 if filtered_response.strip():
                     click.echo(f"\nruntime to you → {filtered_response.strip()}")
+                    sys.stdout.flush()
                 elif local_debug:
                     click.echo(f"{Fore.MAGENTA}DEBUG: No final response to display{Style.RESET_ALL}")
+                    sys.stdout.flush()
 
             # Return the complete response
             return {
