@@ -49,28 +49,25 @@ export function ChatInput({
     };
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-[#343541] via-[#343541] to-[#343541]/80 py-6">
-            <div className="max-w-3xl mx-auto px-4">
-                <form onSubmit={handleSubmit} className="relative">
-                    <textarea
-                        ref={textareaRef}
-                        value={input}
-                        onChange={handleInput}
-                        onKeyDown={handleKeyDown}
-                        placeholder={placeholder}
-                        disabled={disabled}
-                        className="w-full min-h-[120px] max-h-[240px] resize-none rounded-3xl border-0 bg-[#40414f] px-6 py-5 pr-14 text-white text-base placeholder:text-gray-400 focus:outline-none"
-                        rows={1}
-                    />
-                    <button
-                        type="submit"
-                        disabled={disabled || !input.trim()}
-                        className="absolute right-4 bottom-[22px] rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <ArrowUpIcon className="h-5 w-5 stroke-[3]" />
-                    </button>
-                </form>
-            </div>
-        </div>
+        <form onSubmit={handleSubmit} className="relative">
+            <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder}
+                disabled={disabled}
+                className="w-full min-h-[120px] max-h-[240px] resize-none rounded-3xl border-0 bg-[#40414f] px-6 py-5 pr-14 text-white text-base placeholder:text-gray-400 focus:outline-none"
+                rows={1}
+                style={{ height: "80px" }}
+            />
+            <button
+                type="submit"
+                disabled={disabled || !input.trim()}
+                className="absolute right-4 bottom-[22px] rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+                <ArrowUpIcon className="h-5 w-5 stroke-[3]" />
+            </button>
+        </form>
     );
 } 
