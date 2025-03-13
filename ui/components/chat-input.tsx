@@ -1,16 +1,20 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowUpIcon } from "lucide-react";
+import { ArrowUpIcon, SquareIcon } from "lucide-react";
 
 type ChatInputProps = {
     onSend: (message: string) => void;
+    onStop?: () => void;
+    isProcessing?: boolean;
     disabled?: boolean;
     placeholder?: string;
 };
 
 export function ChatInput({
     onSend,
+    onStop,
+    isProcessing = false,
     disabled = false,
     placeholder = "Message..."
 }: ChatInputProps) {
@@ -19,7 +23,7 @@ export function ChatInput({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || disabled) return;
+        if (!input.trim() || disabled || isProcessing) return;
 
         onSend(input);
         setInput("");
@@ -27,6 +31,12 @@ export function ChatInput({
         // Reset textarea height
         if (textareaRef.current) {
             textareaRef.current.style.height = "80px";
+        }
+    };
+
+    const handleStop = () => {
+        if (onStop) {
+            onStop();
         }
     };
 
@@ -61,13 +71,24 @@ export function ChatInput({
                 rows={1}
                 style={{ height: "80px" }}
             />
-            <button
-                type="submit"
-                disabled={disabled || !input.trim()}
-                className="absolute right-4 bottom-[22px] rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-                <ArrowUpIcon className="h-5 w-5 stroke-[3]" />
-            </button>
+            {isProcessing ? (
+                <button
+                    type="button"
+                    onClick={handleStop}
+                    className="absolute right-4 bottom-[22px] rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 transition-colors"
+                    title="Stop processing"
+                >
+                    <SquareIcon className="h-4 w-4 stroke-[3]" />
+                </button>
+            ) : (
+                <button
+                    type="submit"
+                    disabled={disabled || !input.trim()}
+                    className="absolute right-4 bottom-[22px] rounded-full h-10 w-10 flex items-center justify-center bg-white text-[#343541] hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                    <ArrowUpIcon className="h-5 w-5 stroke-[3]" />
+                </button>
+            )}
         </form>
     );
 } 

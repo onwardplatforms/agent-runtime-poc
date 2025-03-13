@@ -30,9 +30,9 @@
             "name": "Math Agent",
             "description": "Performs mathematical calculations including addition, subtraction, multiplication, division, square roots, powers, and percentages. Use for all math calculations.",
             "conversation_starters": [
-                "A number leaves a remainder of 7 when divided by 23. When multiplied by 5, the result leaves a remainder of 1 when divided by 23. What is the number?",
-                "A 5 kg ball is dropped from 50 meters. Air slows it down with a force of 0.2 times its speed. How fast is it falling after 5 seconds?",
-                "A factory makes two types of batteries. 60% have a 5% defect rate, and 40% have a 10% defect rate. If a battery is defective, what is the chance it is from the second type?"
+                "A faucet fills a tank at a rate of 5 liters per minute, while a drain removes water at a rate of 2 liters per minute. If the tank starts empty, how long will it take to fill a 60-liter tank?",
+                "Emma deposits $1,000 in a savings account that earns 5% annual interest, compounded yearly. How much money will she have after 3 years?",
+                "A scientist has two solutions: one that is 30% salt and another that is 50% salt. If she wants to mix them to create 1 liter of a 40% salt solution, how much of each solution should she use?"
             ],
             "endpoint": "http://localhost:5004/api/message"
         }
