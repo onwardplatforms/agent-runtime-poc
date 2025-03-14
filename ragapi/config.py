@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     # Chunking settings
     chunk_size: int = 512
     chunk_overlap: int = 50
-
+    use_semantic_chunking: bool = False  # Whether to use the semantic chunking strategy
+    
     # Similarity search settings
     default_top_k: int = 5
     

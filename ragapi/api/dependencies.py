@@ -56,5 +56,6 @@ def get_text_chunker() -> TextChunker:
     """
     return get_chunker(
         chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap
+        chunk_overlap=settings.chunk_overlap,
+        use_semantic_chunking=settings.use_semantic_chunking
     )

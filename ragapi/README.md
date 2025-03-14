@@ -40,6 +40,43 @@ Available OpenAI embedding models:
 - `text-embedding-3-large` (higher quality but more expensive)
 - `text-embedding-ada-002` (legacy model)
 
+### Chunking Strategies
+
+The RAG API offers two different text chunking strategies:
+
+#### Simple Chunking (Default)
+
+This strategy splits text into fixed-size chunks with specified overlap, without considering the document's semantic structure.
+
+```
+RAG_CHUNK_SIZE=512
+RAG_CHUNK_OVERLAP=50
+RAG_USE_SEMANTIC_CHUNKING=false
+```
+
+#### Semantic Chunking
+
+This advanced strategy respects document structure by preserving semantic boundaries like headings, paragraphs, and lists. It ensures headings stay with their content and avoids awkward splits in the middle of sentences.
+
+```
+RAG_CHUNK_SIZE=512
+RAG_CHUNK_OVERLAP=50
+RAG_USE_SEMANTIC_CHUNKING=true
+```
+
+Benefits of semantic chunking:
+- Preserves document structure and context
+- Keeps headings with their associated content
+- Respects paragraph and list boundaries
+- Splits long sections more intelligently
+- Improves retrieval quality by maintaining semantic coherence
+
+The semantic chunker handles various document structures, including:
+- Markdown-style headings (`# Heading`)
+- Underlined headings (`Heading\n=====`)
+- Paragraphs and lists
+- Long content that needs to be split with sentence awareness
+
 ## API Endpoints
 
 ### Documents
@@ -65,4 +102,13 @@ To add a new embedding provider:
 1. Create a new file in `ragapi/embedding/providers/` (e.g., `my_provider.py`)
 2. Implement a class that extends the `EmbeddingModel` abstract base class
 3. Update the `get_embedding_model` function in `ragapi/embedding/models.py` to support your provider
-4. Update the configuration in `ragapi/config.py` to include settings for your provider 
+4. Update the configuration in `ragapi/config.py` to include settings for your provider
+
+### Adding New Chunking Strategies
+
+To add a new chunking strategy:
+
+1. Create a new class that extends the `ChunkingStrategy` abstract base class
+2. Implement the `split_text` method to define your chunking logic
+3. Update the `TextChunker` class to support your strategy
+4. Add configuration options to `ragapi/config.py` as needed 

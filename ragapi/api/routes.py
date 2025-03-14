@@ -74,7 +74,11 @@ async def process_document(
         embedding_model = await get_embedding_model_instance()
     
     from ..document.chunker import get_chunker
-    chunker = get_chunker(settings.chunk_size, settings.chunk_overlap)
+    chunker = get_chunker(
+        chunk_size=settings.chunk_size, 
+        chunk_overlap=settings.chunk_overlap,
+        use_semantic_chunking=settings.use_semantic_chunking
+    )
     
     logger.info(f"Processing document {document_id} in background")
     
