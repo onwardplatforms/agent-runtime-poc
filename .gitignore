@@ -1,5 +1,6 @@
 # Ignore the .ignore folder containing the Semantic Kernel repo
 .ignore/
+.data/
 
 # Python
 __pycache__/

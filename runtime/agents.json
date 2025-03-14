@@ -4,8 +4,8 @@
         "data": {
             "rag": {
                 "local_storage": {
-                    "documents_path": "./data/documents",
-                    "embeddings_path": "./data/embeddings"
+                    "documents_path": "./.data/documents",
+                    "embeddings_path": "./.data/embeddings"
                 }
             }
         }

@@ -1,4 +1,4 @@
-.PHONY: start-hello start-goodbye start-math start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake isort autopep8 format check-format ui-deps ui-dev ui-build ui-start start-full
+.PHONY: start-hello start-goodbye start-math start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake isort autopep8 format check-format ui-deps ui-dev ui-build ui-start start-full start-rag install-rag-deps
 
 # Default target
 all: start-all
@@ -23,6 +23,17 @@ install-deps:
 	else \
 		echo "No virtual environment found, installing globally (consider running 'make setup-venv' first)..."; \
 		pip install -r requirements.txt; \
+	fi
+
+# Install dependencies for the RAG API
+install-rag-deps:
+	@echo "Installing RAG API dependencies..."
+	@if [ -d ".venv" ]; then \
+		echo "Using virtual environment..."; \
+		. .venv/bin/activate && pip install -r ragapi/requirements.txt; \
+	else \
+		echo "No virtual environment found, installing globally (consider running 'make setup-venv' first)..."; \
+		pip install -r ragapi/requirements.txt; \
 	fi
 
 # Install UI dependencies
@@ -72,6 +83,11 @@ check-ports:
 	else \
 		echo "✅ Port 5004 (Math Agent) is available"; \
 	fi
+	@if lsof -i:5005 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5005 (RAG API) is in use"; \
+	else \
+		echo "✅ Port 5005 (RAG API) is available"; \
+	fi
 	@if lsof -i:3000 > /dev/null 2>&1; then \
 		echo "⚠️  Port 3000 (UI) is in use"; \
 	else \
@@ -80,11 +96,12 @@ check-ports:
 
 # Kill processes using specific ports
 kill-port:
-	@echo "Killing processes using ports 5003, 5001, 5002, 5004, and 3000..."
-	-lsof -ti:5003 | xargs kill -9 2>/dev/null || true
+	@echo "Killing processes using ports 5001, 5002, 5003, 5004, 5005, and 3000..."
 	-lsof -ti:5001 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:5002 | xargs kill -9 2>/dev/null || true
+	-lsof -ti:5003 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:5004 | xargs kill -9 2>/dev/null || true
+	-lsof -ti:5005 | xargs kill -9 2>/dev/null || true
 	-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
 	@echo "Ports should now be free"
 
@@ -156,8 +173,19 @@ start-runtime:
 	PYTHONUNBUFFERED=1 python api.py &
 	@echo "Runtime started on http://localhost:5003"
 
-# Start both agents and the runtime
-start-all: start-hello start-goodbye start-math start-runtime
+# Start the RAG API
+start-rag:
+	@echo "Starting RAG API..."
+	@if lsof -i:5005 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5005 is already in use. Killing existing process..."; \
+		lsof -ti:5005 | xargs kill -9 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	PYTHONUNBUFFERED=1 python -m uvicorn ragapi.main:app --host 0.0.0.0 --port 5005 &
+	@echo "RAG API started on http://localhost:5005"
+
+# Start all backend components
+start-all: start-hello start-goodbye start-math start-runtime start-rag
 	@echo "All backend components are running!"
 
 # Start all components in the background and launch CLI (main command for users)
@@ -197,6 +225,9 @@ stop:
 	-pkill -f "dotnet run" 2>/dev/null || true
 	-pkill -f "GoodbyeAgent" 2>/dev/null || true
 	
+	@echo "Stopping RAG API..."
+	-pkill -f "uvicorn ragapi.main:app" 2>/dev/null || true
+	
 	@echo "Cleaning up any remaining processes on our ports..."
 	@$(MAKE) kill-port
 	
@@ -221,6 +252,11 @@ status:
 	else \
 		echo "Runtime (process): STOPPED"; \
 	fi
+	@if pgrep -f "uvicorn ragapi.main:app" > /dev/null; then \
+		echo "RAG API (process): RUNNING"; \
+	else \
+		echo "RAG API (process): STOPPED"; \
+	fi
 	
 	@echo "\nChecking by port availability:"
 	@if lsof -i:5001 > /dev/null 2>&1; then \
@@ -238,13 +274,20 @@ status:
 	else \
 		echo "Port 5003 (Runtime): AVAILABLE"; \
 	fi
+	@if lsof -i:5005 > /dev/null 2>&1; then \
+		echo "Port 5005 (RAG API): IN USE"; \
+	else \
+		echo "Port 5005 (RAG API): AVAILABLE"; \
+	fi
 
 # Help command
 help:
 	@echo "Agent Runtime System Commands:"
 	@echo "  make install-deps    - Install dependencies for the runtime"
+	@echo "  make install-rag-deps - Install dependencies for the RAG API"
 	@echo "  make setup-venv      - Set up a Python virtual environment and install dependencies"
-	@echo "  make start-all       - Start all backend agents and the runtime"
+	@echo "  make start-all       - Start all backend agents, runtime, and RAG API"
+	@echo "  make start-rag       - Start only the RAG API service"
 	@echo "  make interactive     - Start all backend components and launch the CLI interface"
 	@echo "  make restart         - Restart all components (with port checking)"
 	@echo "  make stop            - Stop all running components"

@@ -1,14 +1,23 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { SquareIcon, ArrowUpIcon } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { SquareIcon, ArrowUpIcon, XIcon, FileIcon } from "lucide-react";
 import { WebSpeechRecognition } from "./web-speech-recognition";
 import { FileUpload } from "./file-upload";
+
+type UploadedFile = {
+    id: string;
+    name: string;
+    size: number;
+    path?: string;
+};
 
 type ChatInputProps = {
     onSend: (message: string) => void;
     onStop?: () => void;
     onFileUpload?: (files: File[]) => void;
+    onFileRemove?: (fileId: string) => void;
+    uploadedFiles?: UploadedFile[];
     isProcessing?: boolean;
     disabled?: boolean;
     placeholder?: string;
@@ -18,12 +27,22 @@ export function ChatInput({
     onSend,
     onStop,
     onFileUpload,
+    onFileRemove,
+    uploadedFiles = [],
     isProcessing = false,
     disabled = false,
     placeholder = "Message..."
 }: ChatInputProps) {
     const [input, setInput] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const fileDisplayRef = useRef<HTMLDivElement>(null);
+
+    // Log uploads for debugging
+    useEffect(() => {
+        if (uploadedFiles.length > 0) {
+            console.log("ChatInput received uploaded files:", uploadedFiles);
+        }
+    }, [uploadedFiles]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -86,8 +105,50 @@ export function ChatInput({
         }
     };
 
+    const handleRemoveFile = (fileId: string) => {
+        if (onFileRemove) {
+            onFileRemove(fileId);
+        }
+    };
+
+    // Format file size to readable format
+    const formatFileSize = (bytes: number): string => {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
     return (
         <form onSubmit={handleSubmit} className="relative">
+            {/* File display area */}
+            {uploadedFiles.length > 0 && (
+                <div
+                    ref={fileDisplayRef}
+                    className="w-full bg-[#40414f] px-4 pt-3 rounded-t-3xl border-b border-gray-700"
+                >
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {uploadedFiles.map(file => (
+                            <div
+                                key={file.id}
+                                className="bg-[#4a4b59] text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
+                            >
+                                <FileIcon className="h-4 w-4 text-blue-400" />
+                                <span className="truncate max-w-[150px]">{file.name}</span>
+                                <span className="text-gray-400 text-xs">({formatFileSize(file.size)})</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveFile(file.id)}
+                                    className="text-gray-400 hover:text-white transition-colors"
+                                >
+                                    <XIcon className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Message input area */}
             <textarea
                 ref={textareaRef}
                 value={input}
@@ -95,7 +156,7 @@ export function ChatInput({
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 disabled={disabled}
-                className="w-full min-h-[120px] max-h-[240px] resize-none rounded-3xl border-0 bg-[#40414f] px-6 py-5 pr-14 text-white text-base placeholder:text-gray-400 focus:outline-none"
+                className={`w-full min-h-[120px] max-h-[240px] resize-none border-0 bg-[#40414f] px-6 py-5 text-white text-base placeholder:text-gray-400 focus:outline-none ${uploadedFiles.length > 0 ? 'rounded-b-3xl' : 'rounded-3xl'}`}
                 rows={1}
                 style={{ height: "80px" }}
             />

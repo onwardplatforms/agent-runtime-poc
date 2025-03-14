@@ -52,6 +52,22 @@ export type GroupChatRequest = {
     stream?: boolean;
 };
 
+// Define a new file type for uploads
+export type UploadedFile = {
+    id: string;
+    name: string;
+    size: number;
+    path: string;
+    original_name: string;
+    stored_name: string;
+};
+
+export type UploadResponse = {
+    message: string;
+    files: UploadedFile[];
+    error?: string;
+};
+
 const API_BASE_URL = 'http://localhost:5003';
 
 // Check if the API is available
@@ -276,6 +292,209 @@ export async function testApiConnection(): Promise<{ success: boolean; message: 
         return {
             success: false,
             message: `Error connecting to API: ${error instanceof Error ? error.message : String(error)}`
+        };
+    }
+}
+
+// Add the file upload function to the API client
+export async function uploadFiles(files: File[], conversationId?: string): Promise<UploadResponse> {
+    try {
+        console.log(`Starting file upload process for ${files.length} files`);
+
+        // Check API availability first
+        console.log("Checking API availability...");
+        const isAvailable = await checkApiAvailability();
+        console.log("API availability check result:", isAvailable);
+
+        if (!isAvailable) {
+            throw new Error('API server is not available. Please make sure it is running at ' + API_BASE_URL);
+        }
+
+        // Create FormData to send files
+        const formData = new FormData();
+
+        // Add each file to the form data
+        for (const file of files) {
+            console.log(`Adding file to FormData: ${file.name} (${file.size} bytes)`);
+            formData.append('files', file);
+        }
+
+        // Add conversation ID if provided
+        if (conversationId) {
+            console.log(`Adding conversation_id to FormData: ${conversationId}`);
+            formData.append('conversation_id', conversationId);
+        }
+
+        // Log the FormData contents
+        console.log("FormData created with:",
+            Array.from(formData.entries()).map(entry => {
+                if (entry[1] instanceof File) {
+                    return `${entry[0]}: File(${(entry[1] as File).name})`;
+                }
+                return `${entry[0]}: ${entry[1]}`;
+            })
+        );
+
+        // First, test API accessibility with a simple GET request
+        try {
+            const testResponse = await fetch(`${API_BASE_URL}/`, {
+                method: 'GET',
+                mode: 'cors',
+            });
+            console.log("API reachability test:", testResponse.status, testResponse.statusText);
+            if (!testResponse.ok) {
+                console.warn("API is reachable but returned non-200 status");
+            }
+        } catch (error) {
+            console.error("API reachability test failed:", error);
+        }
+
+        console.log(`Sending upload request to ${API_BASE_URL}/api/upload`);
+
+        // Send files directly to the runtime API
+        const response = await fetch(`${API_BASE_URL}/api/upload`, {
+            method: 'POST',
+            body: formData,
+            mode: 'cors',
+        });
+
+        console.log("Upload response status:", response.status, response.statusText);
+
+        let data;
+        try {
+            const textResponse = await response.text();
+            console.log("Raw response text:", textResponse);
+            data = JSON.parse(textResponse);
+        } catch (error) {
+            console.error("Failed to parse response as JSON:", error);
+            throw new Error(`Failed to parse server response: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        console.log("Upload response data:", data);
+
+        if (!response.ok) {
+            throw new Error(data.detail || data.error || `Upload failed with status: ${response.status}`);
+        }
+
+        return data as UploadResponse;
+    } catch (error) {
+        console.error('Error uploading files:', error);
+        console.error('Error details:', error instanceof Error ? error.stack : 'No stack trace available');
+        return {
+            message: `Error: ${error instanceof Error ? error.message : String(error)}`,
+            files: []
+        };
+    }
+}
+
+/**
+ * Upload a document to the RAG API for processing
+ */
+export async function uploadDocumentToRAG(file: File, conversationId?: string): Promise<any> {
+    try {
+        console.log(`Uploading document to RAG API: ${file.name} (${file.size} bytes)`);
+
+        // Create FormData for the RAG API
+        const formData = new FormData();
+        formData.append('file', file);
+
+        if (conversationId) {
+            console.log(`Adding conversation_id to RAG FormData: ${conversationId}`);
+            formData.append('conversation_id', conversationId);
+        }
+
+        console.log("Sending document to RAG API for processing...");
+        const response = await fetch('http://localhost:5005/rag/documents', {
+            method: 'POST',
+            body: formData,
+            mode: 'cors'
+        });
+
+        console.log("RAG upload response status:", response.status, response.statusText);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("RAG API error:", errorText);
+            throw new Error(`RAG API returned error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log("RAG upload successful:", data);
+        return data;
+    } catch (error) {
+        console.error("Error uploading document to RAG API:", error);
+        throw error;
+    }
+}
+
+/**
+ * Delete a document from the RAG API
+ */
+export async function deleteDocumentFromRAG(documentId: string, conversationId?: string): Promise<any> {
+    try {
+        console.log(`Deleting document from RAG API: ${documentId}`);
+
+        let url = `http://localhost:5005/rag/documents/${documentId}`;
+        if (conversationId) {
+            url += `?conversation_id=${encodeURIComponent(conversationId)}`;
+        }
+
+        console.log(`Sending delete request to RAG API: ${url}`);
+        const response = await fetch(url, {
+            method: 'DELETE',
+            mode: 'cors'
+        });
+
+        console.log("RAG delete response status:", response.status, response.statusText);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("RAG API error:", errorText);
+            throw new Error(`RAG API returned error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log("RAG delete successful:", data);
+        return data;
+    } catch (error) {
+        console.error("Error deleting document from RAG API:", error);
+        throw error;
+    }
+}
+
+// Delete an uploaded file
+export async function deleteFile(fileId: string, conversationId?: string): Promise<{ success: boolean; message: string }> {
+    try {
+        console.log(`Deleting file ${fileId} ${conversationId ? `from conversation ${conversationId}` : ''}`);
+
+        // Build the URL with optional query parameter
+        let url = `${API_BASE_URL}/api/upload/${fileId}`;
+        if (conversationId) {
+            url += `?conversation_id=${encodeURIComponent(conversationId)}`;
+        }
+
+        // Send the delete request
+        const response = await fetch(url, {
+            method: 'DELETE',
+            mode: 'cors',
+        });
+
+        const data = await response.json();
+        console.log("Delete response:", data);
+
+        if (!response.ok) {
+            throw new Error(data.error || `Delete failed with status: ${response.status}`);
+        }
+
+        return {
+            success: true,
+            message: data.message || 'File deleted successfully'
+        };
+    } catch (error) {
+        console.error('Error deleting file:', error);
+        return {
+            success: false,
+            message: `Error: ${error instanceof Error ? error.message : String(error)}`
         };
     }
 } 

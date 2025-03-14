@@ -22,10 +22,10 @@ from runtime.agent_runtime import AgentGroupChat, AgentRuntime, AgentTermination
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.ERROR  # Change from WARNING to ERROR
+    level=logging.INFO  # Change from ERROR to INFO for more verbose logging
 )
 logger = logging.getLogger("runtime_api")
-logger.setLevel(logging.ERROR)
+logger.setLevel(logging.INFO)  # Set to INFO for more detailed logs
 
 app = FastAPI(title="Agent Runtime API", version="0.3.0")
 
@@ -97,6 +97,36 @@ async def get_runtime():
         # Short delay to allow kernel initialization
         await asyncio.sleep(1)
     return _runtime_instance
+
+
+# Get storage path from configuration
+def get_documents_dir() -> Path:
+    """Get the documents directory from the configuration."""
+    try:
+        with open("runtime/agents.json", "r") as f:
+            config = json.load(f)
+        
+        # Get the documents path from the config
+        documents_path = config.get("settings", {}).get("data", {}).get("rag", {}).get("local_storage", {}).get("documents_path", "./.data/documents")
+        path = Path(documents_path)
+        
+        # Create the directory if it doesn't exist
+        path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Ensured documents directory exists: {path}")
+        
+        return path
+    except Exception as e:
+        logger.warning(f"Error loading configuration or creating directory: {e}")
+        # Fall back to default path
+        default_path = Path("./.data/documents")
+        default_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created default documents directory: {default_path}")
+        return default_path
+
+
+# Get and ensure the documents directory exists
+DOCUMENTS_DIR = get_documents_dir()
+logger.info(f"Using documents directory: {DOCUMENTS_DIR}")
 
 
 @app.post("/api/query")
@@ -364,40 +394,148 @@ async def root():
         ]
     }
 
-# Create documents directory if it doesn't exist
-DOCUMENTS_DIR = Path("./data/documents")
-DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.post("/api/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
-    """Upload files for RAG processing."""
+async def upload_files(
+    files: List[UploadFile] = File(...),
+    conversation_id: str = Form(None)
+):
+    """
+    Upload files for RAG processing.
+    
+    Files are organized by conversation ID if provided, otherwise stored in the root documents directory.
+    Original filenames are preserved with a UUID prefix to avoid collisions.
+    """
     try:
+        if not files:
+            raise HTTPException(status_code=400, detail="No files provided")
+            
+        # Create a conversation-specific directory if conversation_id is provided
+        target_dir = DOCUMENTS_DIR
+        if conversation_id:
+            target_dir = DOCUMENTS_DIR / conversation_id
+            try:
+                target_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created/ensured conversation directory: {target_dir}")
+            except Exception as e:
+                logger.error(f"Failed to create conversation directory {target_dir}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to create upload directory: {str(e)}")
+            
+        logger.info(f"Uploading files to: {target_dir}")
+        
         uploaded_files = []
         
         # Process each uploaded file
         for file in files:
-            # Create a safe filename
-            original_filename = file.filename
-            filename = f"{uuid.uuid4()}_{original_filename}"
-            file_path = DOCUMENTS_DIR / filename
-            
-            # Save the file
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            
-            uploaded_files.append({
-                "original_name": original_filename,
-                "stored_name": filename,
-                "path": str(file_path)
-            })
-            
-            logger.info(f"File uploaded: {original_filename} -> {file_path}")
+            try:
+                # Get original filename and file extension
+                original_filename = file.filename
+                if not original_filename:
+                    logger.warning("File has no filename, using 'unnamed_file'")
+                    original_filename = "unnamed_file"
+                    
+                file_id = str(uuid.uuid4())
+                
+                # Create a safe filename that preserves the original name but adds a UUID prefix
+                safe_filename = f"{file_id}-{original_filename}"
+                file_path = target_dir / safe_filename
+                
+                # Create parent directories if they don't exist (just to be extra safe)
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Save the file
+                try:
+                    with open(file_path, "wb") as buffer:
+                        shutil.copyfileobj(file.file, buffer)
+                except OSError as e:
+                    logger.error(f"Failed to write file {file_path}: {e}")
+                    raise HTTPException(status_code=500, detail=f"I/O error saving file: {str(e)}")
+                
+                # Get file size
+                file_size = os.path.getsize(file_path)
+                
+                # Relative path for storage
+                try:
+                    rel_path = str(file_path.relative_to(Path(".")))
+                except ValueError:
+                    # If we can't get a relative path, use absolute
+                    rel_path = str(file_path)
+                
+                # Create response object with file details
+                file_info = {
+                    "id": file_id,
+                    "name": original_filename,
+                    "size": file_size,
+                    "path": rel_path,
+                    "original_name": original_filename,
+                    "stored_name": safe_filename,
+                    "conversation_id": conversation_id
+                }
+                
+                uploaded_files.append(file_info)
+                
+                logger.info(f"File uploaded: {original_filename} -> {file_path} ({file_size} bytes)")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error processing file {file.filename}: {str(e)}")
+                # Continue with other files
         
-        return {"message": f"Successfully uploaded {len(files)} files", "files": uploaded_files}
+        if not uploaded_files:
+            return {"message": "No files were successfully uploaded", "files": []}
+        
+        return {
+            "message": f"Successfully uploaded {len(uploaded_files)} files",
+            "files": uploaded_files
+        }
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error uploading files: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error uploading files: {str(e)}")
+
+
+@app.delete("/api/upload/{file_id}")
+async def delete_file(file_id: str, conversation_id: str = None):
+    """
+    Delete a file by its stored file ID.
+    
+    If conversation_id is provided, looks in that specific directory.
+    Otherwise, searches through all conversation directories.
+    """
+    try:
+        if not file_id:
+            raise HTTPException(status_code=400, detail="No file ID provided")
+        
+        file_found = False
+        
+        # If conversation_id is provided, look only in that directory
+        if conversation_id:
+            target_dir = DOCUMENTS_DIR / conversation_id
+            if target_dir.exists():
+                for file_path in target_dir.glob(f"{file_id}*"):
+                    file_path.unlink()
+                    file_found = True
+                    logger.info(f"Deleted file {file_path} from conversation {conversation_id}")
+                    break
+        else:
+            # Otherwise search through all conversation directories
+            for file_path in DOCUMENTS_DIR.glob(f"**/{file_id}*"):
+                file_path.unlink()
+                file_found = True
+                logger.info(f"Deleted file {file_path}")
+                break
+                
+        if not file_found:
+            return {"success": True, "message": "File not found, it may have been already deleted"}
+            
+        return {"success": True, "message": "File deleted successfully"}
+    
+    except Exception as e:
+        logger.error(f"Error deleting file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
+
 
 if __name__ == "__main__":
     # Start the server

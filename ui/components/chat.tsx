@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "re
 import { v4 as uuidv4 } from "uuid";
 import { ChatInput } from "@/components/chat-input";
 import { AgentCallMessage, AgentResponseMessage, Message } from "@/components/message";
-import { StreamChunk, streamQuery } from "@/lib/api";
+import { StreamChunk, streamQuery, uploadFiles, UploadedFile as ApiUploadedFile, deleteFile, uploadDocumentToRAG, deleteDocumentFromRAG } from "@/lib/api";
 import { Loader2, ArrowDown, Zap } from "lucide-react";
 import { LoadingDots } from "@/components/loading-dots";
 
@@ -40,6 +40,15 @@ type AgentResponse = {
     userMessageId: string;
 };
 
+type UploadedFile = {
+    id: string;
+    name: string;
+    size: number;
+    path?: string;
+    original_name?: string;
+    stored_name?: string;
+};
+
 // Define a ref type that exposes the reset method
 export type ChatRef = {
     reset: () => void;
@@ -64,7 +73,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const [isRetrying, setIsRetrying] = useState(false);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
-    const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+    const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
 
     // Expose the reset method to the parent component through the ref
     useImperativeHandle(ref, () => ({
@@ -76,6 +85,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             setIsProcessing(false);
             setProcessingMessageIds(new Set());
             setCurrentMessageId(null);
+            setUploadedFiles([]);
 
             // Generate a new conversation ID
             const newConversationId = uuidv4();
@@ -358,6 +368,15 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         const controller = new AbortController();
         setAbortController(controller);
 
+        // Send attached files with the message (this would be expanded in a real implementation)
+        if (uploadedFiles.length > 0) {
+            console.log(`Sending message with ${uploadedFiles.length} attached files:`,
+                uploadedFiles.map(f => f.name));
+
+            // Here you would include file references in your message to the backend
+            // For now, we're just logging them
+        }
+
         // Don't clear previous agent calls and responses
         // We'll associate new ones with the current message
 
@@ -532,6 +551,9 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
 
             setCurrentMessageId(null);
             setAbortController(null); // Clear the AbortController
+
+            // Clear uploaded files after sending
+            setUploadedFiles([]);
         }
     };
 
@@ -698,43 +720,50 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     // Handle file uploads
     const handleFileUpload = async (files: File[]) => {
         console.log("Files selected for upload:", files);
-        setUploadedFiles((prevFiles) => [...prevFiles, ...files]);
-
-        // Create a FormData object to send files to the server
-        const formData = new FormData();
-        files.forEach((file) => {
-            formData.append('files', file);
-        });
+        console.log("Current conversation ID:", conversationId);
 
         try {
-            // Upload files to server
-            const response = await fetch('http://localhost:5003/api/upload', {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!response.ok) {
-                throw new Error(`Upload failed: ${response.statusText}`);
-            }
-
-            const result = await response.json();
+            console.log("Starting upload to API...");
+            // Upload files using the runtime API endpoint with conversation ID
+            const result = await uploadFiles(files, conversationId);
             console.log("Upload successful:", result);
 
-            // Add a system message indicating successful upload
-            const fileNames = files.map(file => file.name).join(", ");
-            const systemMessage: ChatMessage = {
-                id: uuidv4(),
-                role: "system",
-                content: `Files uploaded successfully: ${fileNames}`,
-                timestamp: new Date().toISOString(),
-            };
+            if (result.files.length > 0) {
+                // Add uploaded files to state
+                const newFiles: UploadedFile[] = result.files.map((file) => ({
+                    id: file.id,
+                    name: file.name,
+                    size: file.size,
+                    path: file.path,
+                    original_name: file.original_name,
+                    stored_name: file.stored_name
+                }));
 
-            setMessages((prev) => [...prev, systemMessage]);
-            scrollToBottom();
+                console.log("Adding files to state:", newFiles);
+                setUploadedFiles((prevFiles) => [...prevFiles, ...newFiles]);
+
+                // Upload each file to the RAG API for processing
+                console.log("Uploading files to RAG API for document processing...");
+                for (const file of files) {
+                    try {
+                        const ragResult = await uploadDocumentToRAG(file, conversationId);
+                        console.log(`RAG processing for ${file.name} complete:`, ragResult);
+                    } catch (ragError) {
+                        console.error(`Error processing ${file.name} with RAG API:`, ragError);
+                        // Continue with other files even if one fails
+                    }
+                }
+
+                // No system message for successful uploads
+            } else {
+                console.warn("No files were uploaded in the response");
+                throw new Error("No files were uploaded");
+            }
         } catch (error) {
             console.error("Error uploading files:", error);
+            console.error("Error details:", error instanceof Error ? error.stack : "No stack trace");
 
-            // Add error message
+            // Only show system message for errors
             const systemMessage: ChatMessage = {
                 id: uuidv4(),
                 role: "system",
@@ -744,6 +773,41 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
 
             setMessages((prev) => [...prev, systemMessage]);
             scrollToBottom();
+        }
+    };
+
+    // Handle file removal
+    const handleFileRemove = async (fileId: string) => {
+        // First, find the file in our state
+        const fileToRemove = uploadedFiles.find(file => file.id === fileId);
+        if (!fileToRemove) {
+            console.warn(`File with ID ${fileId} not found in state`);
+            return;
+        }
+
+        console.log(`Removing file: ${fileId} (${fileToRemove.name})`);
+
+        // Update UI state immediately for responsive feel
+        setUploadedFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
+
+        try {
+            // Delete from the normal API
+            const result = await deleteFile(fileId, conversationId);
+            console.log(`File deletion result: ${result.message}`);
+
+            // Also try to delete from the RAG API using the same ID
+            try {
+                console.log(`Attempting to delete document from RAG API: ${fileId}`);
+                const ragResult = await deleteDocumentFromRAG(fileId, conversationId);
+                console.log(`RAG deletion result:`, ragResult);
+            } catch (ragError) {
+                console.warn(`Failed to delete from RAG API, but file was removed from regular storage:`, ragError);
+                // Continue even if RAG deletion fails
+            }
+        } catch (error) {
+            console.error(`Error deleting file ${fileId}:`, error);
+            // If deletion fails, restore the file in UI state
+            setUploadedFiles(prevFiles => [...prevFiles, fileToRemove]);
         }
     };
 
@@ -884,6 +948,8 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                             onSend={handleSendMessage}
                             onStop={handleStop}
                             onFileUpload={handleFileUpload}
+                            onFileRemove={handleFileRemove}
+                            uploadedFiles={uploadedFiles}
                             isProcessing={isProcessing}
                             disabled={!isInitialized}
                             placeholder={

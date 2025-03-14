@@ -19,3 +19,5 @@ autopep8
 types-requests
 types-colorama
 openai>=1.0.0
+python-multipart
+pydantic-settings
