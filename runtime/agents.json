@@ -1,6 +1,14 @@
 {
     "settings": {
-        "enable_streaming": true
+        "enable_streaming": true,
+        "data": {
+            "rag": {
+                "local_storage": {
+                    "documents_path": "./data/documents",
+                    "embeddings_path": "./data/embeddings"
+                }
+            }
+        }
     },
     "agents": [
         {

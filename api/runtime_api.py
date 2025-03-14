@@ -3,15 +3,19 @@
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
+
+import shutil
+from pathlib import Path
 
 from runtime.agent_runtime import AgentGroupChat, AgentRuntime, AgentTerminationStrategy
 
@@ -359,6 +363,41 @@ async def root():
             {"path": "/api/agents", "method": "GET", "description": "List available agents"}
         ]
     }
+
+# Create documents directory if it doesn't exist
+DOCUMENTS_DIR = Path("./data/documents")
+DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+@app.post("/api/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    """Upload files for RAG processing."""
+    try:
+        uploaded_files = []
+        
+        # Process each uploaded file
+        for file in files:
+            # Create a safe filename
+            original_filename = file.filename
+            filename = f"{uuid.uuid4()}_{original_filename}"
+            file_path = DOCUMENTS_DIR / filename
+            
+            # Save the file
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            uploaded_files.append({
+                "original_name": original_filename,
+                "stored_name": filename,
+                "path": str(file_path)
+            })
+            
+            logger.info(f"File uploaded: {original_filename} -> {file_path}")
+        
+        return {"message": f"Successfully uploaded {len(files)} files", "files": uploaded_files}
+    
+    except Exception as e:
+        logger.error(f"Error uploading files: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error uploading files: {str(e)}")
 
 if __name__ == "__main__":
     # Start the server

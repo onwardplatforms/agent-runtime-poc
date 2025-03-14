@@ -6,17 +6,7 @@ import { ChatInput } from "@/components/chat-input";
 import { AgentCallMessage, AgentResponseMessage, Message } from "@/components/message";
 import { StreamChunk, streamQuery } from "@/lib/api";
 import { Loader2, ArrowDown, Zap } from "lucide-react";
-
-// Inline simplified LoadingDots component since we're removing dependencies
-function LoadingDots() {
-    return (
-        <div className="flex items-center space-x-1">
-            <div className="h-1.5 w-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "-0.3s" }}></div>
-            <div className="h-1.5 w-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "-0.15s" }}></div>
-            <div className="h-1.5 w-1.5 bg-blue-400 rounded-full animate-bounce"></div>
-        </div>
-    );
-}
+import { LoadingDots } from "@/components/loading-dots";
 
 type Agent = {
     id: string;
@@ -74,6 +64,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const [isRetrying, setIsRetrying] = useState(false);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
+    const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
     // Expose the reset method to the parent component through the ref
     useImperativeHandle(ref, () => ({
@@ -704,6 +695,58 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         handleSendMessage(starter);
     };
 
+    // Handle file uploads
+    const handleFileUpload = async (files: File[]) => {
+        console.log("Files selected for upload:", files);
+        setUploadedFiles((prevFiles) => [...prevFiles, ...files]);
+
+        // Create a FormData object to send files to the server
+        const formData = new FormData();
+        files.forEach((file) => {
+            formData.append('files', file);
+        });
+
+        try {
+            // Upload files to server
+            const response = await fetch('http://localhost:5003/api/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            console.log("Upload successful:", result);
+
+            // Add a system message indicating successful upload
+            const fileNames = files.map(file => file.name).join(", ");
+            const systemMessage: ChatMessage = {
+                id: uuidv4(),
+                role: "system",
+                content: `Files uploaded successfully: ${fileNames}`,
+                timestamp: new Date().toISOString(),
+            };
+
+            setMessages((prev) => [...prev, systemMessage]);
+            scrollToBottom();
+        } catch (error) {
+            console.error("Error uploading files:", error);
+
+            // Add error message
+            const systemMessage: ChatMessage = {
+                id: uuidv4(),
+                role: "system",
+                content: `Error uploading files: ${error instanceof Error ? error.message : String(error)}`,
+                timestamp: new Date().toISOString(),
+            };
+
+            setMessages((prev) => [...prev, systemMessage]);
+            scrollToBottom();
+        }
+    };
+
     // Show loading state while initializing
     if (!isInitialized) {
         return (
@@ -840,8 +883,14 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                         <ChatInput
                             onSend={handleSendMessage}
                             onStop={handleStop}
+                            onFileUpload={handleFileUpload}
                             isProcessing={isProcessing}
-                            placeholder="Ask me anything..."
+                            disabled={!isInitialized}
+                            placeholder={
+                                isProcessing
+                                    ? "Processing..."
+                                    : "Type a message..."
+                            }
                         />
                     </div>
                 </div>

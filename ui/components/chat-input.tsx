@@ -3,10 +3,12 @@
 import { useRef, useState } from "react";
 import { SquareIcon, ArrowUpIcon } from "lucide-react";
 import { WebSpeechRecognition } from "./web-speech-recognition";
+import { FileUpload } from "./file-upload";
 
 type ChatInputProps = {
     onSend: (message: string) => void;
     onStop?: () => void;
+    onFileUpload?: (files: File[]) => void;
     isProcessing?: boolean;
     disabled?: boolean;
     placeholder?: string;
@@ -15,6 +17,7 @@ type ChatInputProps = {
 export function ChatInput({
     onSend,
     onStop,
+    onFileUpload,
     isProcessing = false,
     disabled = false,
     placeholder = "Message..."
@@ -77,6 +80,12 @@ export function ChatInput({
         }
     };
 
+    const handleFileSelect = (files: File[]) => {
+        if (onFileUpload) {
+            onFileUpload(files);
+        }
+    };
+
     return (
         <form onSubmit={handleSubmit} className="relative">
             <textarea
@@ -90,6 +99,18 @@ export function ChatInput({
                 rows={1}
                 style={{ height: "80px" }}
             />
+
+            {/* Left side - Upload button */}
+            {onFileUpload && (
+                <div className="absolute left-4 bottom-[22px]">
+                    <FileUpload
+                        onFileSelect={handleFileSelect}
+                        disabled={disabled || isProcessing}
+                    />
+                </div>
+            )}
+
+            {/* Right side - Speech and Submit buttons */}
             <div className="absolute right-4 bottom-[22px] flex space-x-2">
                 {/* Web Speech Recognition Button */}
                 <WebSpeechRecognition
