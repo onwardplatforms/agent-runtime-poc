@@ -25,16 +25,22 @@ class FilesystemStorage(BaseStorage):
         Args:
             base_dir: Base directory for embeddings. If None, uses the configured embeddings_path.
         """
-        self.base_dir = Path(base_dir or settings.embeddings_path)
-        self.index = {}  # In-memory index for quick access
+        self.base_dir = Path(base_dir or settings.embeddings_path).resolve()
+        self.indexes = {}  # In-memory index for quick access
         
-    async def initialize(self) -> None:
-        """Initialize the storage."""
+    async def initialize(self) -> Dict[str, Any]:
+        """Initialize the filesystem storage."""
         os.makedirs(self.base_dir, exist_ok=True)
         logger.info(f"Initialized filesystem storage at {self.base_dir}")
         
-        # Load any existing indexes
+        # Load existing indexes
         await self._load_indexes()
+        
+        return {
+            "status": "initialized",
+            "backend_type": "filesystem",
+            "base_dir": str(self.base_dir)
+        }
         
     async def _load_indexes(self) -> None:
         """Load existing indexes from the filesystem."""
@@ -50,7 +56,7 @@ class FilesystemStorage(BaseStorage):
                     with open(index_path, "r") as f:
                         conv_index = json.load(f)
                         conversation_id = conv_dir.name
-                        self.index[conversation_id] = conv_index
+                        self.indexes[conversation_id] = conv_index
                         logger.info(f"Loaded index for conversation {conversation_id} with {len(conv_index)} entries")
                 except Exception as e:
                     logger.error(f"Error loading index from {index_path}: {str(e)}")
@@ -61,7 +67,7 @@ class FilesystemStorage(BaseStorage):
             try:
                 with open(root_index_path, "r") as f:
                     root_index = json.load(f)
-                    self.index[None] = root_index
+                    self.indexes[None] = root_index
                     logger.info(f"Loaded root index with {len(root_index)} entries")
             except Exception as e:
                 logger.error(f"Error loading root index: {str(e)}")
@@ -77,7 +83,7 @@ class FilesystemStorage(BaseStorage):
         
         index_path = index_dir / "index.json"
         try:
-            conv_index = self.index.get(conversation_id, {})
+            conv_index = self.indexes.get(conversation_id, {})
             with open(index_path, "w") as f:
                 json.dump(conv_index, f, indent=2)
             logger.info(f"Saved index to {index_path}")
@@ -103,8 +109,8 @@ class FilesystemStorage(BaseStorage):
             await self.initialize()
             
         # Ensure we have an index for this conversation
-        if conversation_id not in self.index:
-            self.index[conversation_id] = {}
+        if conversation_id not in self.indexes:
+            self.indexes[conversation_id] = {}
             
         # Ensure directory exists
         if conversation_id:
@@ -125,7 +131,7 @@ class FilesystemStorage(BaseStorage):
                     pickle.dump(chunk, f)
                     
                 # Update the index
-                self.index[conversation_id][chunk.chunk_id] = {
+                self.indexes[conversation_id][chunk.chunk_id] = {
                     "document_id": chunk.document_id,
                     "path": str(chunk_path),
                     "created_at": datetime.now().isoformat(),
@@ -148,7 +154,7 @@ class FilesystemStorage(BaseStorage):
     ) -> Optional[Chunk]:
         """Get a chunk by ID."""
         # Check if the chunk exists in our index
-        conv_index = self.index.get(conversation_id, {})
+        conv_index = self.indexes.get(conversation_id, {})
         if chunk_id not in conv_index:
             logger.warning(f"Chunk {chunk_id} not found in index for conversation {conversation_id}")
             return None
@@ -176,7 +182,7 @@ class FilesystemStorage(BaseStorage):
         results = []
         
         # Get the relevant index
-        conv_index = self.index.get(conversation_id, {})
+        conv_index = self.indexes.get(conversation_id, {})
         
         # Load all chunks and compute similarity
         for chunk_id, chunk_info in conv_index.items():
@@ -235,7 +241,7 @@ class FilesystemStorage(BaseStorage):
     ) -> int:
         """Delete all chunks for a document."""
         # Get the relevant index
-        conv_index = self.index.get(conversation_id, {})
+        conv_index = self.indexes.get(conversation_id, {})
         
         # Find all chunks for this document
         document_chunks = []
@@ -271,7 +277,7 @@ class FilesystemStorage(BaseStorage):
     ) -> List[Dict[str, Any]]:
         """List all documents."""
         # Get the relevant index
-        conv_index = self.index.get(conversation_id, {})
+        conv_index = self.indexes.get(conversation_id, {})
         
         # Get unique document IDs
         document_ids = set()
@@ -302,3 +308,90 @@ class FilesystemStorage(BaseStorage):
                 
         logger.info(f"Listed {len(documents)} documents for conversation {conversation_id}")
         return documents
+
+    async def get_storage_info(self) -> Dict[str, Any]:
+        """Get information about the storage."""
+        # Count documents and chunks across all conversations
+        total_documents = 0
+        total_chunks = 0
+        total_size = 0
+        
+        # Get list of all conversation directories (subdirectories of base_dir)
+        conversations = [d for d in self.base_dir.glob("*") if d.is_dir()]
+        conversations.append(self.base_dir)  # Include the base dir for documents without conversation_id
+        
+        for conv_dir in conversations:
+            # Count chunks in this conversation
+            conversation_id = conv_dir.name if conv_dir != self.base_dir else None
+            if conversation_id in self.indexes:
+                total_chunks += len(self.indexes[conversation_id])
+            
+            # Calculate storage size
+            for path in conv_dir.glob("**/*"):
+                if path.is_file():
+                    total_size += path.stat().st_size
+        
+            # Count unique document IDs
+            document_ids = set()
+            if conversation_id in self.indexes:
+                for chunk_data in self.indexes[conversation_id].values():
+                    if "document_id" in chunk_data:
+                        document_ids.add(chunk_data["document_id"])
+            total_documents += len(document_ids)
+        
+        return {
+            "backend_type": "filesystem",
+            "document_count": total_documents,
+            "chunk_count": total_chunks,
+            "size": total_size,
+            "location": str(self.base_dir),
+            "conversations": len(conversations) - 1  # Exclude the base dir
+        }
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """Check the health of the storage."""
+        try:
+            # Check if base directory exists and is writable
+            if not self.base_dir.exists():
+                return {
+                    "status": "unhealthy",
+                    "message": f"Base directory {self.base_dir} does not exist",
+                    "details": {"error": "missing_directory"}
+                }
+            
+            # Try to write a test file
+            test_file = self.base_dir / ".health_check"
+            try:
+                with open(test_file, "w") as f:
+                    f.write("health check")
+                test_file.unlink()  # Remove the test file
+            except Exception as e:
+                return {
+                    "status": "unhealthy",
+                    "message": f"Cannot write to base directory: {str(e)}",
+                    "details": {"error": "write_permission", "exception": str(e)}
+                }
+            
+            # Check if indexes are loaded
+            if not self.indexes:
+                return {
+                    "status": "warning",
+                    "message": "No indexes loaded",
+                    "details": {"warning": "no_indexes"}
+                }
+            
+            # Get basic storage info
+            storage_info = await self.get_storage_info()
+            
+            return {
+                "status": "healthy",
+                "message": "Filesystem storage is operational",
+                "details": storage_info
+            }
+            
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "message": f"Health check failed: {str(e)}",
+                "details": {"error": "health_check_exception", "exception": str(e)}
+            }

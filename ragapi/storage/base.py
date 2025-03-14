@@ -40,8 +40,13 @@ class BaseStorage(ABC):
     """Abstract base class for storage backends."""
     
     @abstractmethod
-    async def initialize(self) -> None:
-        """Initialize the storage."""
+    async def initialize(self) -> Dict[str, Any]:
+        """
+        Initialize the storage backend.
+        
+        Returns:
+            Dictionary with initialization status and details.
+        """
         pass
         
     @abstractmethod
@@ -126,5 +131,33 @@ class BaseStorage(ABC):
             
         Returns:
             List of document metadata
+        """
+        pass
+        
+    @abstractmethod
+    async def get_storage_info(self) -> Dict[str, Any]:
+        """
+        Get information about the storage backend.
+        
+        Returns:
+            Dictionary with information about the storage backend like:
+            - backend_type: Type of storage backend
+            - document_count: Number of documents stored
+            - chunk_count: Number of chunks stored
+            - size: Total size of stored data in bytes
+            - location: Physical location of data
+        """
+        pass
+        
+    @abstractmethod
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Check the health of the storage backend.
+        
+        Returns:
+            Dictionary with health check results like:
+            - status: "healthy" or "unhealthy"
+            - message: Human-readable message
+            - details: Additional details about the health check
         """
         pass

@@ -11,6 +11,17 @@ class DocumentStatus(str, Enum):
     PROCESSING = "processing"
     INDEXED = "indexed"
     FAILED = "failed"
+    DELETED = "deleted"
+
+
+class ProcessingStage(str, Enum):
+    """Stages of the document processing pipeline."""
+    INITIALIZATION = "initialization"
+    TEXT_EXTRACTION = "text_extraction"
+    CHUNKING = "chunking"
+    EMBEDDING = "embedding_generation"
+    STORAGE = "storage"
+    COMPLETE = "complete"
 
 
 class DocumentMetadata(BaseModel):
@@ -22,7 +33,10 @@ class DocumentMetadata(BaseModel):
     chunk_count: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.now)
     status: DocumentStatus = DocumentStatus.PENDING
-    error: Optional[str] = None
+    processing_stage: Optional[ProcessingStage] = None
+    last_updated: Optional[datetime] = None
+    error: Optional[Dict[str, Any]] = None
+    processing_time: Optional[float] = None
     
     model_config = ConfigDict(
         extra="allow"  # Allow extra fields in metadata

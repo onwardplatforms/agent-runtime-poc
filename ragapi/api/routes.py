@@ -1,10 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import uuid
 import os
 import logging
 from pathlib import Path
 import asyncio
+import json
+import time
+from datetime import datetime
 
 from ..config import settings
 from ..api.models import (
@@ -14,7 +17,8 @@ from ..api.models import (
     QueryRequest,
     QueryResponse,
     ChunkInfo,
-    DocumentMetadata
+    DocumentMetadata,
+    ProcessingStage
 )
 from ..api.dependencies import get_storage, get_embedding_model_instance, get_text_chunker
 from ..document.extractor import extract_document
@@ -56,6 +60,46 @@ def ensure_embeddings_dir(conversation_id: Optional[str] = None) -> Path:
     return emb_dir
 
 
+# Add a function to update the processing status of a document
+async def update_document_status(
+    document_id: str,
+    conversation_id: Optional[str],
+    status: DocumentStatus,
+    stage: ProcessingStage,
+    metadata: Optional[Dict[str, Any]] = None,
+    error: Optional[Dict[str, Any]] = None
+):
+    """Update the processing status of a document and store it in a tracking file."""
+    try:
+        # Ensure the embedding directory exists
+        emb_dir = ensure_embeddings_dir(conversation_id)
+        
+        # Create the status file path
+        status_file = emb_dir / f"{document_id}_status.json"
+        
+        # Prepare the status data
+        status_data = {
+            "document_id": document_id,
+            "conversation_id": conversation_id,
+            "status": status,
+            "processing_stage": stage,
+            "last_updated": datetime.now().isoformat(),
+            "metadata": metadata or {}
+        }
+        
+        if error:
+            status_data["error"] = error
+            
+        # Write the status to file
+        with open(status_file, "w") as f:
+            json.dump(status_data, f, indent=2)
+            
+        logger.info(f"Updated status for document {document_id}: {status} ({stage})")
+        
+    except Exception as e:
+        logger.error(f"Failed to update status for document {document_id}: {str(e)}")
+
+
 # Background task to process a document
 async def process_document(
     document_id: str, 
@@ -65,6 +109,17 @@ async def process_document(
     embedding_model: Optional[EmbeddingModel] = None
 ):
     """Process a document in the background."""
+    start_time = time.time()
+    
+    # Initialize status tracking
+    await update_document_status(
+        document_id=document_id,
+        conversation_id=conversation_id,
+        status=DocumentStatus.PROCESSING,
+        stage=ProcessingStage.INITIALIZATION,
+        metadata={"file_path": str(file_path)}
+    )
+    
     if storage is None:
         from ..api.dependencies import get_storage
         storage = await get_storage()
@@ -82,20 +137,55 @@ async def process_document(
     
     logger.info(f"Processing document {document_id} in background")
     
+    result = {
+        "success": False,
+        "document_id": document_id,
+        "conversation_id": conversation_id,
+        "chunk_count": 0,
+        "error": None,
+        "stage": ProcessingStage.INITIALIZATION
+    }
+    
     try:
         # 1. Extract text from the document
+        result["stage"] = ProcessingStage.TEXT_EXTRACTION
+        await update_document_status(
+            document_id=document_id,
+            conversation_id=conversation_id,
+            status=DocumentStatus.PROCESSING,
+            stage=ProcessingStage.TEXT_EXTRACTION
+        )
+        
         document_data = await extract_document(file_path)
         text = document_data["text"]
         metadata = document_data["metadata"]
         
         # 2. Chunk the text
+        result["stage"] = ProcessingStage.CHUNKING
+        await update_document_status(
+            document_id=document_id,
+            conversation_id=conversation_id,
+            status=DocumentStatus.PROCESSING,
+            stage=ProcessingStage.CHUNKING,
+            metadata={"text_length": len(text), **metadata}
+        )
+        
         chunks_data = chunker.split_text(text, document_id=document_id, metadata=metadata)
         
         # 3. Create chunk objects and generate embeddings
+        result["stage"] = ProcessingStage.EMBEDDING
+        await update_document_status(
+            document_id=document_id,
+            conversation_id=conversation_id,
+            status=DocumentStatus.PROCESSING,
+            stage=ProcessingStage.EMBEDDING,
+            metadata={"chunk_count": len(chunks_data)}
+        )
+        
         chunks = []
         
         # Process chunks in batches to avoid memory issues
-        batch_size = 10
+        batch_size = settings.embedding_batch_size
         for i in range(0, len(chunks_data), batch_size):
             batch = chunks_data[i:i+batch_size]
             
@@ -116,14 +206,62 @@ async def process_document(
                 chunks.append(chunk)
         
         # 4. Store the chunks
+        result["stage"] = ProcessingStage.STORAGE
+        await update_document_status(
+            document_id=document_id,
+            conversation_id=conversation_id,
+            status=DocumentStatus.PROCESSING,
+            stage=ProcessingStage.STORAGE,
+            metadata={"chunk_count": len(chunks)}
+        )
+        
         chunk_ids = await storage.add_chunks(chunks, conversation_id)
         
-        logger.info(f"Document {document_id} processed: {len(chunk_ids)} chunks created and stored")
-        return len(chunk_ids)
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        # Mark as complete
+        result["success"] = True
+        result["chunk_count"] = len(chunk_ids)
+        result["processing_time"] = processing_time
+        
+        await update_document_status(
+            document_id=document_id,
+            conversation_id=conversation_id,
+            status=DocumentStatus.INDEXED,
+            stage=ProcessingStage.COMPLETE,
+            metadata={
+                "chunk_count": len(chunk_ids),
+                "processing_time": processing_time,
+                **metadata
+            }
+        )
+        
+        logger.info(f"Document {document_id} processed: {len(chunk_ids)} chunks created and stored in {processing_time:.2f}s")
+        return result
         
     except Exception as e:
-        logger.error(f"Error processing document {document_id}: {str(e)}")
-        raise
+        error_message = str(e)
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        logger.error(f"Error processing document {document_id} at stage '{result['stage']}': {error_message}")
+        result["error"] = {
+            "message": error_message,
+            "type": type(e).__name__
+        }
+        result["processing_time"] = processing_time
+        
+        await update_document_status(
+            document_id=document_id,
+            conversation_id=conversation_id,
+            status=DocumentStatus.FAILED,
+            stage=result["stage"],
+            error=result["error"],
+            metadata={"processing_time": processing_time}
+        )
+        
+        return result
 
 
 @router.post("/documents", response_model=DocumentResponse)
@@ -169,15 +307,21 @@ async def upload_document(
         else:
             # Process immediately
             try:
-                await process_document(
+                process_result = await process_document(
                     document_id=document_id,
                     file_path=str(file_path),
                     conversation_id=conversation_id,
                     storage=storage,
                     embedding_model=embedding_model
                 )
-                status = DocumentStatus.INDEXED
-                message = "Document uploaded and processed successfully"
+                
+                if process_result["success"]:
+                    status = DocumentStatus.INDEXED
+                    message = f"Document uploaded and processed successfully: {process_result['chunk_count']} chunks created"
+                else:
+                    status = DocumentStatus.FAILED
+                    error_info = process_result["error"] or {"message": "Unknown error", "type": "Unknown"}
+                    message = f"Document processing failed at stage '{process_result['stage']}': {error_info['message']}"
             except Exception as e:
                 status = DocumentStatus.FAILED
                 message = f"Document processing failed: {str(e)}"
@@ -202,8 +346,46 @@ async def get_document_status(
     storage: BaseStorage = Depends(get_storage)
 ):
     """Get processing status of a document."""
-    # List documents for the conversation
     try:
+        # First, check if there's a status file
+        emb_dir = ensure_embeddings_dir(conversation_id)
+        status_file = emb_dir / f"{document_id}_status.json"
+        
+        if status_file.exists():
+            # Read the status file
+            with open(status_file, "r") as f:
+                status_data = json.load(f)
+            
+            # Extract status information
+            doc_status = status_data.get("status", DocumentStatus.PENDING)
+            processing_stage = status_data.get("processing_stage", ProcessingStage.INITIALIZATION)
+            last_updated = status_data.get("last_updated")
+            error = status_data.get("error")
+            meta = status_data.get("metadata", {})
+            
+            # Create metadata object
+            metadata = DocumentMetadata(
+                filename=meta.get("filename", "unknown"),
+                file_size=meta.get("file_size", 0),
+                mime_type=meta.get("mime_type"),
+                page_count=meta.get("page_count"),
+                chunk_count=meta.get("chunk_count", 0),
+                created_at=datetime.fromisoformat(meta.get("created_at", datetime.now().isoformat())),
+                status=DocumentStatus(doc_status),
+                processing_stage=ProcessingStage(processing_stage) if processing_stage else None,
+                last_updated=datetime.fromisoformat(last_updated) if last_updated else None,
+                error=error,
+                processing_time=meta.get("processing_time")
+            )
+            
+            return DocumentStatusResponse(
+                document_id=document_id,
+                conversation_id=conversation_id,
+                status=DocumentStatus(doc_status),
+                metadata=metadata
+            )
+        
+        # Fall back to checking storage
         documents = await storage.list_documents(conversation_id)
         
         # Find the document with matching ID
@@ -218,6 +400,7 @@ async def get_document_status(
                     chunk_count=doc.get("chunk_count", 0),
                     created_at=doc.get("created_at"),
                     status=DocumentStatus.INDEXED,
+                    processing_stage=ProcessingStage.COMPLETE
                 )
                 
                 return DocumentStatusResponse(

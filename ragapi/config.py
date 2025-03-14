@@ -29,8 +29,18 @@ class Settings(BaseSettings):
     chunk_overlap: int = 50
     use_semantic_chunking: bool = False  # Whether to use the semantic chunking strategy
     
+    # Processing settings
+    embedding_batch_size: int = 10  # Number of chunks to process in one batch
+    processing_timeout: int = 300  # Timeout for document processing in seconds
+    
+    # Storage settings
+    max_documents_per_conversation: int = 1000  # Maximum number of documents per conversation
+    
     # Similarity search settings
     default_top_k: int = 5
+    
+    # Model performance settings
+    use_gpu: bool = True  # Whether to use GPU for embedding generation if available
     
     # Use ConfigDict instead of class Config
     model_config = ConfigDict(

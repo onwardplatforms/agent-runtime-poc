@@ -31,6 +31,16 @@ class ChunkingStrategy(ABC):
     def split_text(self, text: str, document_id: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
         Split text into chunks according to the strategy.
+        
+        Args:
+            text: The text to split
+            document_id: The ID of the document
+            metadata: Optional metadata to include with each chunk
+            
+        Returns:
+            List of dictionaries, each containing:
+                - 'text': The chunk text
+                - 'metadata': A dictionary of metadata for the chunk
         """
         pass
 
