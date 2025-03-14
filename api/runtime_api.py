@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -8,6 +9,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
+import aiohttp
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -127,6 +129,10 @@ def get_documents_dir() -> Path:
 # Get and ensure the documents directory exists
 DOCUMENTS_DIR = get_documents_dir()
 logger.info(f"Using documents directory: {DOCUMENTS_DIR}")
+
+
+# Define RAG API URL
+RAG_API_URL = "http://localhost:5005"
 
 
 @app.post("/api/query")
@@ -405,6 +411,7 @@ async def upload_files(
     
     Files are organized by conversation ID if provided, otherwise stored in the root documents directory.
     Original filenames are preserved with a UUID prefix to avoid collisions.
+    Files are also forwarded to the RAG API for processing.
     """
     try:
         if not files:
@@ -423,6 +430,20 @@ async def upload_files(
             
         logger.info(f"Uploading files to: {target_dir}")
         
+        # Load existing metadata if it exists
+        metadata_path = target_dir / "metadata.json"
+        metadata = {"files": {}}
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, "r") as f:
+                    metadata = json.load(f)
+                    if not isinstance(metadata.get("files"), dict):
+                        metadata["files"] = {}
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON in metadata file: {metadata_path}, starting fresh")
+            except Exception as e:
+                logger.warning(f"Error reading metadata file: {e}, starting fresh")
+        
         uploaded_files = []
         
         # Process each uploaded file
@@ -434,22 +455,27 @@ async def upload_files(
                     logger.warning("File has no filename, using 'unnamed_file'")
                     original_filename = "unnamed_file"
                     
+                # Create a unique ID for this file
                 file_id = str(uuid.uuid4())
                 
-                # Create a safe filename that preserves the original name but adds a UUID prefix
-                safe_filename = f"{file_id}-{original_filename}"
-                file_path = target_dir / safe_filename
+                # Use a safe version of the original filename
+                safe_filename = "".join(c if c.isalnum() or c in ['.', '_', '-'] else '_' for c in original_filename)
                 
-                # Create parent directories if they don't exist (just to be extra safe)
-                file_path.parent.mkdir(parents=True, exist_ok=True)
+                # Create full path with file_id to avoid collisions
+                stored_filename = f"{file_id}-{safe_filename}"
+                file_path = target_dir / stored_filename
                 
-                # Save the file
+                # Save file to disk
                 try:
-                    with open(file_path, "wb") as buffer:
-                        shutil.copyfileobj(file.file, buffer)
-                except OSError as e:
-                    logger.error(f"Failed to write file {file_path}: {e}")
+                    file_content = await file.read()
+                    with open(file_path, "wb") as f:
+                        f.write(file_content)
+                except IOError as e:
+                    logger.error(f"I/O error saving file: {str(e)}")
                     raise HTTPException(status_code=500, detail=f"I/O error saving file: {str(e)}")
+                
+                # Reset file object position for later reuse
+                await file.seek(0)
                 
                 # Get file size
                 file_size = os.path.getsize(file_path)
@@ -468,9 +494,59 @@ async def upload_files(
                     "size": file_size,
                     "path": rel_path,
                     "original_name": original_filename,
-                    "stored_name": safe_filename,
-                    "conversation_id": conversation_id
+                    "stored_name": stored_filename,
+                    "conversation_id": conversation_id,
+                    "upload_time": datetime.datetime.now().isoformat()
                 }
+                
+                # Forward the file to the RAG API for processing
+                try:
+                    # Create a new FormData for the RAG API
+                    rag_form = aiohttp.FormData()
+                    rag_form.add_field('file', 
+                                       file_content,
+                                       filename=original_filename,
+                                       content_type=file.content_type)
+                    
+                    if conversation_id:
+                        rag_form.add_field('conversation_id', conversation_id)
+                    
+                    # Process synchronously for immediate indexing
+                    rag_form.add_field('process_async', 'false')
+                    
+                    # Send the file to the RAG API
+                    async with aiohttp.ClientSession() as session:
+                        rag_response = await session.post(
+                            f"{RAG_API_URL}/rag/documents",
+                            data=rag_form
+                        )
+                        
+                        if rag_response.status != 200:
+                            rag_error = await rag_response.text()
+                            logger.error(f"RAG API error: {rag_response.status} - {rag_error}")
+                            # Continue despite RAG processing error
+                        else:
+                            rag_data = await rag_response.json()
+                            rag_document_id = rag_data.get("document_id")
+                            logger.info(f"RAG API processing successful for {original_filename}, document ID: {rag_document_id}")
+                            
+                            # Store the RAG document ID for future reference
+                            file_info["rag_document_id"] = rag_document_id
+                            
+                except Exception as rag_error:
+                    logger.error(f"Error forwarding file to RAG API: {str(rag_error)}")
+                    # Continue despite RAG processing error
+                
+                # Add file info to metadata
+                metadata["files"][file_id] = file_info
+                
+                # Save updated metadata
+                try:
+                    with open(metadata_path, "w") as f:
+                        json.dump(metadata, f, indent=2)
+                    logger.info(f"Updated metadata file with new file: {file_id}")
+                except Exception as e:
+                    logger.error(f"Error saving metadata file: {e}")
                 
                 uploaded_files.append(file_info)
                 
@@ -503,35 +579,148 @@ async def delete_file(file_id: str, conversation_id: str = None):
     
     If conversation_id is provided, looks in that specific directory.
     Otherwise, searches through all conversation directories.
+    Also deletes the file from the RAG API using the RAG document ID stored in metadata.
     """
     try:
         if not file_id:
             raise HTTPException(status_code=400, detail="No file ID provided")
         
         file_found = False
+        rag_document_id = None
+        file_path_found = None
+        metadata_updated = False
+        conversation_dir = None
         
-        # If conversation_id is provided, look only in that directory
+        # Find the file and directory
         if conversation_id:
+            # If conversation_id is provided, look only in that directory
             target_dir = DOCUMENTS_DIR / conversation_id
+            conversation_dir = target_dir
             if target_dir.exists():
-                for file_path in target_dir.glob(f"{file_id}*"):
-                    file_path.unlink()
-                    file_found = True
-                    logger.info(f"Deleted file {file_path} from conversation {conversation_id}")
-                    break
+                # Try to get metadata first
+                metadata_path = target_dir / "metadata.json"
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, "r") as f:
+                            metadata = json.load(f)
+                            if metadata.get("files") and file_id in metadata["files"]:
+                                file_info = metadata["files"][file_id]
+                                rag_document_id = file_info.get("rag_document_id")
+                                stored_name = file_info.get("stored_name")
+                                if stored_name:
+                                    file_path_found = target_dir / stored_name
+                                    file_found = True
+                                    logger.info(f"Found file {file_path_found} from metadata")
+                    except Exception as e:
+                        logger.warning(f"Error reading metadata file: {e}")
+                
+                # If metadata didn't work, try direct file search
+                if not file_found:
+                    for file_path in target_dir.glob(f"{file_id}-*"):
+                        file_path_found = file_path
+                        file_found = True
+                        logger.info(f"Found file {file_path} from conversation {conversation_id}")
+                        break
         else:
             # Otherwise search through all conversation directories
-            for file_path in DOCUMENTS_DIR.glob(f"**/{file_id}*"):
-                file_path.unlink()
-                file_found = True
-                logger.info(f"Deleted file {file_path}")
-                break
+            for conv_dir in DOCUMENTS_DIR.glob("*"):
+                if conv_dir.is_dir():
+                    metadata_path = conv_dir / "metadata.json"
+                    if metadata_path.exists():
+                        try:
+                            with open(metadata_path, "r") as f:
+                                metadata = json.load(f)
+                                if metadata.get("files") and file_id in metadata["files"]:
+                                    file_info = metadata["files"][file_id]
+                                    rag_document_id = file_info.get("rag_document_id")
+                                    stored_name = file_info.get("stored_name")
+                                    if stored_name:
+                                        file_path_found = conv_dir / stored_name
+                                        file_found = True
+                                        conversation_dir = conv_dir
+                                        logger.info(f"Found file {file_path_found} from metadata in {conv_dir}")
+                                        break
+                        except Exception as e:
+                            logger.warning(f"Error reading metadata file in {conv_dir}: {e}")
+            
+            # If metadata search failed, try direct file search
+            if not file_found:
+                for file_path in DOCUMENTS_DIR.glob(f"**/{file_id}-*"):
+                    file_path_found = file_path
+                    conversation_dir = file_path.parent
+                    file_found = True
+                    logger.info(f"Found file {file_path}")
+                    break
+        
+        # Try to get the RAG document ID from metadata if we didn't find it yet
+        if file_found and not rag_document_id and conversation_dir:
+            metadata_path = conversation_dir / "metadata.json"
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, "r") as f:
+                        metadata = json.load(f)
+                        if metadata.get("files") and file_id in metadata["files"]:
+                            file_info = metadata["files"][file_id]
+                            rag_document_id = file_info.get("rag_document_id")
+                            logger.info(f"Found RAG document ID from metadata: {rag_document_id}")
+                except Exception as e:
+                    logger.warning(f"Error reading metadata file: {e}")
+        
+        # Delete the file if found
+        if file_found and file_path_found and file_path_found.exists():
+            file_path_found.unlink()
+            logger.info(f"Deleted file {file_path_found}")
+            
+            # Update metadata to reflect deletion
+            if conversation_dir:
+                metadata_path = conversation_dir / "metadata.json"
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, "r") as f:
+                            metadata = json.load(f)
+                            if metadata.get("files") and file_id in metadata["files"]:
+                                # Remove the file entry completely instead of just marking it as deleted
+                                del metadata["files"][file_id]
+                                
+                                # Write updated metadata
+                                with open(metadata_path, "w") as f:
+                                    json.dump(metadata, f, indent=2)
+                                metadata_updated = True
+                                logger.info(f"Removed file {file_id} from metadata")
+                    except Exception as e:
+                        logger.warning(f"Error updating metadata file after deletion: {e}")
+                
+        # If we don't have a RAG document ID yet, use the file_id as a fallback
+        if not rag_document_id:
+            rag_document_id = file_id
+            logger.info(f"Using file ID as RAG document ID fallback: {rag_document_id}")
+                
+        # Also delete from RAG API
+        try:
+            # Build the RAG API URL using the rag_document_id
+            rag_url = f"{RAG_API_URL}/rag/documents/{rag_document_id}"
+            if conversation_id:
+                rag_url += f"?conversation_id={conversation_id}"
+                
+            # Send delete request to RAG API
+            async with aiohttp.ClientSession() as session:
+                rag_response = await session.delete(rag_url)
+                
+                if rag_response.status == 200:
+                    rag_data = await rag_response.json()
+                    logger.info(f"RAG API deletion successful: {rag_data.get('message', 'No message')}")
+                elif rag_response.status != 404:  # Ignore 404 errors (file not found)
+                    rag_error = await rag_response.text()
+                    logger.error(f"RAG API error during deletion: {rag_response.status} - {rag_error}")
+        except Exception as rag_error:
+            logger.error(f"Error deleting file from RAG API: {str(rag_error)}")
+            # Continue despite RAG deletion error
                 
         if not file_found:
             return {"success": True, "message": "File not found, it may have been already deleted"}
             
         return {"success": True, "message": "File deleted successfully"}
-    
+        
     except Exception as e:
         logger.error(f"Error deleting file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")

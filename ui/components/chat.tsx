@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { ChatInput } from "@/components/chat-input";
 import { AgentCallMessage, AgentResponseMessage, Message } from "@/components/message";
-import { StreamChunk, streamQuery, uploadFiles, UploadedFile as ApiUploadedFile, deleteFile, uploadDocumentToRAG, deleteDocumentFromRAG } from "@/lib/api";
+import { StreamChunk, streamQuery, uploadFiles, UploadedFile as ApiUploadedFile, deleteFile } from "@/lib/api";
 import { Loader2, ArrowDown, Zap } from "lucide-react";
 import { LoadingDots } from "@/components/loading-dots";
+import { format } from "date-fns";
+import { FileUpload } from "./file-upload";
+import { MaxWidthWrapper } from "./max-width-wrapper";
+import { WelcomeScreen } from "./welcome-screen";
+import { useMediaQuery } from "react-responsive";
+import AgentSelector from "./agent-selector";
 
 type Agent = {
     id: string;
@@ -725,6 +731,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         try {
             console.log("Starting upload to API...");
             // Upload files using the runtime API endpoint with conversation ID
+            // The runtime API will now forward files to the RAG API for processing
             const result = await uploadFiles(files, conversationId);
             console.log("Upload successful:", result);
 
@@ -742,17 +749,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                 console.log("Adding files to state:", newFiles);
                 setUploadedFiles((prevFiles) => [...prevFiles, ...newFiles]);
 
-                // Upload each file to the RAG API for processing
-                console.log("Uploading files to RAG API for document processing...");
-                for (const file of files) {
-                    try {
-                        const ragResult = await uploadDocumentToRAG(file, conversationId);
-                        console.log(`RAG processing for ${file.name} complete:`, ragResult);
-                    } catch (ragError) {
-                        console.error(`Error processing ${file.name} with RAG API:`, ragError);
-                        // Continue with other files even if one fails
-                    }
-                }
+                // No need to separately upload to RAG API - runtime API handles this
 
                 // No system message for successful uploads
             } else {
@@ -791,19 +788,11 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         setUploadedFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
 
         try {
-            // Delete from the normal API
+            // Delete from the API (which will also delete from RAG API)
             const result = await deleteFile(fileId, conversationId);
             console.log(`File deletion result: ${result.message}`);
 
-            // Also try to delete from the RAG API using the same ID
-            try {
-                console.log(`Attempting to delete document from RAG API: ${fileId}`);
-                const ragResult = await deleteDocumentFromRAG(fileId, conversationId);
-                console.log(`RAG deletion result:`, ragResult);
-            } catch (ragError) {
-                console.warn(`Failed to delete from RAG API, but file was removed from regular storage:`, ragError);
-                // Continue even if RAG deletion fails
-            }
+            // No need to separately delete from RAG API - runtime API handles this
         } catch (error) {
             console.error(`Error deleting file ${fileId}:`, error);
             // If deletion fails, restore the file in UI state

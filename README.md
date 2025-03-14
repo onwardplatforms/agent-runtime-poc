@@ -233,3 +233,26 @@ Individual agent endpoints:
 - Goodbye Agent: `http://localhost:5002/api/message`
 
 For complete API documentation, see [API.md](docs/API.md).
+
+## RAG Integration
+
+The system now includes a Retrieval-Augmented Generation (RAG) API service that integrates with the agent runtime. The RAG API provides:
+
+1. Document processing (text extraction, chunking, embedding generation)
+2. Vector storage for semantic search
+3. Query capabilities to find relevant document chunks
+
+### File Upload Flow
+
+When users upload files through the UI:
+1. Files are sent to the Runtime API (`/api/upload`)
+2. The Runtime API stores the files in `.data/documents/` and forwards them to the RAG API
+3. The RAG API processes the files, generates embeddings, and stores them in `.data/embeddings/`
+
+This consolidated approach ensures:
+- Single point of entry through the Runtime API
+- No duplicate API calls from the UI
+- Consistent file management across the system
+- Proper embedding generation for all uploaded files
+
+## Getting Started
