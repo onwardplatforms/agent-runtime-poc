@@ -7,12 +7,6 @@ import { AgentCallMessage, AgentResponseMessage, Message, RAGRetrievalMessage } 
 import { StreamChunk, streamQuery, uploadFiles, UploadedFile as ApiUploadedFile, deleteFile } from "@/lib/api";
 import { Loader2, ArrowDown, Zap } from "lucide-react";
 import { LoadingDots } from "@/components/loading-dots";
-import { format } from "date-fns";
-import { FileUpload } from "./file-upload";
-import { MaxWidthWrapper } from "./max-width-wrapper";
-import { WelcomeScreen } from "./welcome-screen";
-import { useMediaQuery } from "react-responsive";
-import AgentSelector from "./agent-selector";
 
 type Agent = {
     id: string;
