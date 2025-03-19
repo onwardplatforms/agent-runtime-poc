@@ -170,7 +170,7 @@ start-runtime:
 		lsof -ti:5003 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	PYTHONUNBUFFERED=1 python api.py &
+	PYTHONUNBUFFERED=1 python -m uvicorn api.runtime_api:app --host 0.0.0.0 --port 5003 &
 	@echo "Runtime started on http://localhost:5003"
 
 # Start the RAG API

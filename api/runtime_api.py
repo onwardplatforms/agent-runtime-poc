@@ -98,6 +98,42 @@ async def get_runtime():
         _runtime_instance = AgentRuntime()
         # Short delay to allow kernel initialization
         await asyncio.sleep(1)
+        
+        # After initialization, explicitly verify RAG plugin registration
+        try:
+            from runtime.features.rag import RagPlugin
+            
+            # Log kernel functions to verify RAG registration
+            logger.info("Checking kernel for registered functions...")
+            if hasattr(_runtime_instance.kernel, 'plugins') and hasattr(_runtime_instance.kernel.plugins, 'get_functions'):
+                functions = _runtime_instance.kernel.plugins.get_functions()
+                logger.info(f"Kernel functions: {functions}")
+                
+                # Check if RAG functions are available
+                rag_functions = [f for f in functions if f.startswith('rag') or f.startswith('rag_plugin')]
+                logger.info(f"Found RAG functions: {rag_functions}")
+                
+                if not rag_functions:
+                    logger.warning("No RAG functions found! Re-registering the RAG plugin...")
+                    
+                    # Try to re-register the RAG plugin
+                    rag_config = _runtime_instance.config.get("settings", {}).get("data", {}).get("rag", {})
+                    rag_plugin = RagPlugin(rag_config)
+                    
+                    # Register with both names to be safe
+                    _runtime_instance.kernel.add_plugin(rag_plugin, plugin_name="rag_plugin")
+                    _runtime_instance.kernel.add_plugin(rag_plugin, plugin_name="rag")
+                    
+                    # Verify registration again
+                    functions = _runtime_instance.kernel.plugins.get_functions()
+                    rag_functions = [f for f in functions if f.startswith('rag') or f.startswith('rag_plugin')]
+                    logger.info(f"After re-registration, RAG functions: {rag_functions}")
+            else:
+                logger.warning("Cannot verify kernel functions - kernel API not available")
+                
+        except Exception as e:
+            logger.error(f"Error verifying RAG plugin: {e}")
+    
     return _runtime_instance
 
 
@@ -726,7 +762,108 @@ async def delete_file(file_id: str, conversation_id: str = None):
         raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
 
 
-if __name__ == "__main__":
-    # Start the server
-    print("Starting Agent Runtime API")
-    uvicorn.run(app, host="0.0.0.0", port=5003, log_level="warning")
+@app.get("/api/rag/documents")
+async def list_rag_documents(conversation_id: Optional[str] = None):
+    """
+    List documents from the RAG API.
+    
+    This endpoint forwards the request to the RAG API and returns the result.
+    """
+    try:
+        logger.info(f"Listing RAG documents for conversation_id: {conversation_id}")
+        
+        # Build the RAG API URL
+        rag_url = f"{RAG_API_URL}/rag/documents"
+        if conversation_id:
+            rag_url += f"?conversation_id={conversation_id}"
+            
+        logger.info(f"Forwarding request to RAG API: {rag_url}")
+            
+        # Forward the request to the RAG API
+        async with aiohttp.ClientSession() as session:
+            logger.info(f"Sending GET request to RAG API: {rag_url}")
+            rag_response = await session.get(rag_url)
+            
+            logger.info(f"RAG API response status: {rag_response.status}")
+            
+            # Get the response content
+            response_text = await rag_response.text()
+            logger.info(f"RAG API response text: {response_text[:200]}...")
+            
+            if rag_response.status != 200:
+                logger.error(f"RAG API error: {rag_response.status} - {response_text}")
+                return {"error": f"RAG API error: {rag_response.status}", "documents": []}
+                
+            # Parse the response
+            try:
+                response_data = json.loads(response_text)
+                document_count = len(response_data.get('documents', []))
+                logger.info(f"Successfully retrieved {document_count} documents from RAG API")
+                
+                # Log each document for debugging
+                for i, doc in enumerate(response_data.get('documents', [])):
+                    logger.info(f"Document {i+1}: {doc.get('document_id')} - {doc.get('filename')} ({doc.get('status')})")
+                
+                return response_data
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse RAG API response as JSON: {e}")
+                logger.error(f"Response text: {response_text[:500]}")
+                return {"error": "Failed to parse RAG API response", "documents": []}
+                
+    except Exception as e:
+        logger.error(f"Error listing RAG documents: {str(e)}", exc_info=True)
+        return {"error": f"Error listing RAG documents: {str(e)}", "documents": []}
+
+
+# Add diagnostic endpoint to check document indexing status
+@app.get("/api/diagnostics/documents")
+async def diagnostics_documents(conversation_id: str = None):
+    """
+    Diagnostic endpoint to check if documents are indexed properly in the RAG API.
+    """
+    logger.info(f"Running document diagnostics for conversation_id: {conversation_id}")
+    
+    try:
+        # First check local storage
+        docs_dir = get_documents_dir() / (conversation_id or "")
+        local_files = list(docs_dir.glob("*.*"))
+        logger.info(f"Local storage has {len(local_files)} files for conversation: {conversation_id or 'global'}")
+        for i, file in enumerate(local_files[:5]):  # Show first 5 only
+            logger.info(f"Local file {i+1}: {file.name} ({file.stat().st_size} bytes)")
+        
+        # Now check the RAG API
+        rag_api_url = os.environ.get("RAG_API_URL", "http://localhost:5005")
+        endpoint = f"{rag_api_url}/rag/documents"
+        if conversation_id:
+            endpoint += f"?conversation_id={conversation_id}"
+            
+        logger.info(f"Checking RAG API documents at: {endpoint}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(endpoint) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    documents = result.get("documents", [])
+                    logger.info(f"RAG API reports {len(documents)} documents")
+                    for i, doc in enumerate(documents[:5]):  # Show first 5 only
+                        logger.info(f"RAG document {i+1}: {doc.get('document_id')} - {doc.get('filename')} ({doc.get('status')})")
+                    
+                    # Return the diagnostic results
+                    return {
+                        "local_files": [{"name": f.name, "size": f.stat().st_size} for f in local_files],
+                        "rag_documents": documents,
+                        "local_count": len(local_files),
+                        "rag_count": len(documents)
+                    }
+                else:
+                    error_text = await response.text()
+                    logger.error(f"RAG API returned error: {response.status} - {error_text}")
+                    return {
+                        "local_files": [{"name": f.name, "size": f.stat().st_size} for f in local_files],
+                        "rag_error": f"Status: {response.status}, Error: {error_text}",
+                        "local_count": len(local_files),
+                        "rag_count": 0
+                    }
+    except Exception as e:
+        logger.error(f"Error in documents diagnostics: {e}")
+        return {"error": str(e)}
+

@@ -20,12 +20,12 @@ from semantic_kernel.functions.kernel_function_decorator import kernel_function
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.ERROR  # Change from WARNING to ERROR
+    level=logging.DEBUG  # Change from ERROR to DEBUG
 )
 logger = logging.getLogger("agent_runtime")
 
 # Debug flag - set to False by default
-DEBUG = os.environ.get("AGENT_RUNTIME_DEBUG", "false").lower() == "true"
+DEBUG = os.environ.get("AGENT_RUNTIME_DEBUG", "true").lower() == "true"  # Set default to true
 print(f"Agent Runtime DEBUG mode: {DEBUG}, env var: {os.environ.get('AGENT_RUNTIME_DEBUG', 'not set')}")
 
 
@@ -253,6 +253,9 @@ class AgentRuntime:
         try:
             with open(config_path, "r") as f:
                 config = json.load(f)
+                
+            # Store the entire config for later use by plugins
+            self.config = config
 
             # Load settings if available
             if "settings" in config:
@@ -264,6 +267,7 @@ class AgentRuntime:
                 self.agents[agent_id] = AgentPlugin(agent_config)
         except Exception as e:
             print(f"Error loading agent configuration: {e}")
+            self.config = {}
 
     def initialize_kernel(self):
         """Initialize the Semantic Kernel instance with agent functions."""
@@ -334,6 +338,81 @@ class AgentRuntime:
                             logger.debug(f"register_plugin failed: {e3}")
                             logger.error(f"All registration methods failed for agent {agent_id}")
                             raise Exception(f"Could not register agent {agent_id}: {e1}, {e2}, {e3}")
+            
+            # Register the RAG plugin
+            try:
+                from runtime.features.rag import RagPlugin
+                from semantic_kernel.functions.kernel_function import KernelFunction
+                
+                # Get RAG configuration from the loaded config
+                rag_config = {}
+                if hasattr(self, 'config') and isinstance(self.config, dict):
+                    rag_config = self.config.get("settings", {}).get("data", {}).get("rag", {})
+                
+                # Create and register the RAG plugin
+                rag_plugin = RagPlugin(rag_config)
+                
+                # Convert to a valid plugin name format like with agents
+                plugin_name = "rag_plugin"
+                
+                logger.debug("Registering RAG plugin")
+                logger.info(f"RAG plugin functions: {[func for func in dir(rag_plugin) if callable(getattr(rag_plugin, func)) and not func.startswith('_')]}")
+                
+                # Use exactly the same approach as with agent plugins
+                try:
+                    logger.debug(f"Trying to register RAG plugin with add_plugin")
+                    # Try the standard registration method
+                    self.kernel.add_plugin(rag_plugin, plugin_name=plugin_name)
+                    logger.info(f"Registered RAG plugin as a plugin using add_plugin")
+                    
+                    # Register direct function access to ensure it's available
+                    logger.info("Also registering direct function reference")
+                    if hasattr(self.kernel, 'add_function'):
+                        try:
+                            # Try to register the search_documents function directly
+                            search_docs_func = getattr(rag_plugin, 'search_documents')
+                            if callable(search_docs_func):
+                                # Register function directly
+                                self.kernel.add_function(search_docs_func, plugin_name="rag_plugin")
+                                logger.info("Successfully registered search_documents function directly")
+                        except Exception as direct_err:
+                            logger.warning(f"Failed to register direct function: {direct_err}")
+                    
+                    # Register it again with just "rag" as the name for backward compatibility
+                    try:
+                        self.kernel.add_plugin(rag_plugin, plugin_name="rag")
+                        logger.info("Also registered RAG plugin with name 'rag'")
+                    except Exception as e:
+                        logger.debug(f"Failed to register with alternate name 'rag': {e}")
+                    
+                    # Verify registration
+                    plugin_functions = []
+                    try:
+                        if hasattr(self.kernel, 'plugins') and hasattr(self.kernel.plugins, 'get_functions'):
+                            plugin_functions = self.kernel.plugins.get_functions()
+                        elif hasattr(self.kernel, 'get_functions'):
+                            plugin_functions = self.kernel.get_functions()
+                        
+                        logger.info(f"Available kernel functions after RAG registration: {plugin_functions}")
+                        
+                        # Check if RAG search_documents function is available
+                        rag_functions = [f for f in plugin_functions if f.startswith('rag_plugin.') or f.startswith('rag.')]
+                        if rag_functions:
+                            logger.info(f"Found RAG functions: {rag_functions}")
+                        else:
+                            logger.warning("No RAG functions found after registration")
+                    except Exception as e_verify:
+                        logger.warning(f"Error verifying RAG plugin registration: {e_verify}")
+                except Exception as e1:
+                    logger.warning(f"add_plugin failed for RAG: {e1}")
+                    logger.warning("Continuing without RAG capabilities")
+            except ImportError as e:
+                logger.warning(f"Could not import RAG plugin: {e}")
+                logger.warning("Continuing without RAG capabilities")
+            except Exception as e:
+                logger.error(f"Error registering RAG plugin: {e}")
+                logger.warning("Continuing without RAG capabilities")
+                
         except Exception as e:
             logger.error(f"Error registering agent plugins: {e}")
             # Continue without function calling capabilities
@@ -342,78 +421,245 @@ class AgentRuntime:
         logger.info("Semantic Kernel initialized successfully.")
 
     async def process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False, max_agents: int = None) -> Dict[str, Any]:
-        """Process a query using Semantic Kernel's function calling capabilities."""
-        time.time()
-
-        # Initialize conversation if not provided
-        if not conversation_id:
-            conversation_id = str(uuid.uuid4())
-
-        # Initialize conversation history if it doesn't exist
-        if conversation_id not in self.conversations:
-            self.conversations[conversation_id] = []
-
-        # Add user message to conversation history
-        self.conversations[conversation_id].append({
-            "role": "user",
-            "content": query,
-            "timestamp": datetime.datetime.now().isoformat()
-        })
-
-        # Create a chat history for the conversation
-        chat_history = ChatHistory()
-
-        # Add system message
-        system_message = """
-        You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
-
-        1. COORDINATION: Look at what agents you have access to and determine which one is the best fit for the user's question or if you should answer directly
-        2. DETAILED COMMUNICATION: When calling an agent, provide the FULL CONTEXT of the user's question, not just isolated formulas or parts
-        3. PROBLEM DESCRIPTION: Describe the complete problem to the agent, including all relevant details the user provided
-        4. CLARITY: Frame queries to agents as requests for help solving a specific problem, not as commands to perform operations
-        5. INTERACTION: If a user query is ambiguous or lacks necessary details, ask follow-up questions to clarify before proceeding
-        6. CONSOLIDATION: Integrate agent responses into a coherent answer without unnecessary repetition
-
-        IMPORTANT GUIDELINES:
-        - When calling specialized agents like the math agent, frame requests as "The user wants to solve [complete problem]. Can you help with this?"
-        - Allow agents to break down problems themselves rather than pre-fragmenting tasks
-        - For each agent call, share the complete context and details from the user's question
-        - Let agents determine their own approach to solving problems within their domain
-        - Keep your final responses to users concise and focused on the answer, not the process
-        - In final responses to users, don't repeat the agent's full chain of reasoning unless specifically requested
         """
-        chat_history.add_system_message(system_message)
-
-        # Add conversation history
-        for message in self.conversations[conversation_id]:
-            if message["role"] == "user":
-                chat_history.add_user_message(message["content"])
-            elif message["role"] == "assistant":
-                chat_history.add_assistant_message(message["content"])
-
-        # Track which agents were used
-        agents_used = []
-        execution_trace = []
-
+        Process a query using AI agents.
+        
+        Args:
+            query: The query to process
+            conversation_id: The conversation ID to use
+            verbose: Whether to include verbose information in the response
+            max_agents: Maximum number of agents to call (None for default)
+        
+        Returns:
+            A dictionary containing the query result
+        """
+        logger.info(f"*** Processing query: '{query}' with conversation_id: {conversation_id} ***")
+        
+        # Debug: Check kernel state and RAG availability
         try:
+            logger.info("*** KERNEL DIAGNOSTICS ***")
+            # Verify kernel functions right before query
+            if hasattr(self.kernel, 'plugins') and hasattr(self.kernel.plugins, 'get_functions'):
+                all_functions = self.kernel.plugins.get_functions()
+                logger.info(f"All kernel functions at query time: {all_functions}")
+                
+                # Check specifically for RAG functions
+                rag_functions = [f for f in all_functions if f.startswith('rag') or f.startswith('rag_plugin')]
+                logger.info(f"RAG functions at query time: {rag_functions}")
+                
+                # If no RAG functions, this is a critical issue
+                if not rag_functions:
+                    logger.warning("CRITICAL: No RAG functions found at query time!")
+                    
+                    # Check if we can see the RagPlugin instance
+                    logger.info("Attempting to check RAG plugin registration...")
+                    try:
+                        from runtime.features.rag import RagPlugin
+                        
+                        # Try to re-register the RAG plugin as a last resort
+                        rag_config = self.config.get("settings", {}).get("data", {}).get("rag", {})
+                        rag_plugin = RagPlugin(rag_config)
+                        logger.info(f"Created new RagPlugin instance with config: {rag_config}")
+                        
+                        # Log plugin attributes and methods
+                        plugin_methods = [m for m in dir(rag_plugin) if not m.startswith('_') and callable(getattr(rag_plugin, m))]
+                        logger.info(f"RagPlugin methods: {plugin_methods}")
+                        
+                        # Try to re-register it
+                        logger.info("Re-registering RAG plugin...")
+                        self.kernel.add_plugin(rag_plugin, plugin_name="rag_plugin")
+                        
+                        # Verify again
+                        all_functions = self.kernel.plugins.get_functions()
+                        rag_functions = [f for f in all_functions if f.startswith('rag') or f.startswith('rag_plugin')]
+                        logger.info(f"After emergency re-registration, RAG functions: {rag_functions}")
+                    except Exception as rag_error:
+                        logger.error(f"Failed to re-register RAG plugin: {rag_error}")
+            else:
+                logger.warning("Cannot access kernel functions API")
+        except Exception as diag_error:
+            logger.error(f"Error in kernel diagnostics: {diag_error}")
+        
+        # Add diagnostic check for RAG functions
+        try:
+            logger.info("Checking for RAG plugin availability")
+            has_rag_plugin = False
+            
+            if hasattr(self.kernel, 'plugins'):
+                if hasattr(self.kernel.plugins, 'get_functions'):
+                    functions = self.kernel.plugins.get_functions()
+                    rag_functions = [f for f in functions if f.startswith('rag.')]
+                    has_rag_plugin = len(rag_functions) > 0
+                    logger.info(f"RAG functions found via get_functions: {rag_functions}")
+                logger.debug(f"All available plugin functions: {functions if 'functions' in locals() else 'None'}")
+            
+            # Alternative way to check if 'rag' is in available agents
+            if 'rag' in self.get_all_agents():
+                has_rag_plugin = True
+                logger.info("RAG plugin available through get_all_agents()")
+                
+            logger.info(f"RAG plugin available: {has_rag_plugin}")
+                
+            # Check if this query seems like it might need document search
+            doc_related_terms = ["document", "file", "uploaded", "nda", "agreement", "contract", "search"]
+            might_need_rag = any(term in query.lower() for term in doc_related_terms)
+            
+            if might_need_rag:
+                logger.info(f"Query '{query}' might need RAG based on content (matching terms: {[term for term in doc_related_terms if term in query.lower()]})")
+                logger.info(f"Will try to encourage LLM to use RAG plugin for this query")
+        except Exception as rag_check_error:
+            logger.warning(f"Error checking RAG availability: {rag_check_error}")
+            
+        # Continue with normal processing
+        try:
+            time.time()
+
+            # Initialize conversation if not provided
+            if not conversation_id:
+                conversation_id = str(uuid.uuid4())
+
+            # Initialize conversation history if it doesn't exist
+            if conversation_id not in self.conversations:
+                self.conversations[conversation_id] = []
+
+            # Add user message to conversation history
+            self.conversations[conversation_id].append({
+                "role": "user",
+                "content": query,
+                "timestamp": datetime.datetime.now().isoformat()
+            })
+
+            # Create a chat history for the conversation
+            chat_history = ChatHistory()
+
+            # Add system message
+            system_message = f"""
+            You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
+
+            1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
+            2. DETAILED COMMUNICATION: When calling an agent, provide the FULL CONTEXT of the user's question, not just isolated formulas or parts
+            3. PROBLEM DESCRIPTION: Describe the complete problem to the agent, including all relevant details the user provided
+            4. CLARITY: Frame queries to agents as requests for help solving a specific problem, not as commands to perform operations
+            5. INTERACTION: If a user query is ambiguous or lacks necessary details, ask follow-up questions to clarify before proceeding
+            6. CONSOLIDATION: Integrate agent responses into a coherent answer without unnecessary repetition
+
+            IMPORTANT GUIDELINES:
+            - When calling specialized agents like the math agent, frame requests as "The user wants to solve [complete problem]. Can you help with this?"
+            - Allow agents to break down problems themselves rather than pre-fragmenting tasks
+            - For each agent call, share the complete context and details from the user's question
+            - Let agents determine their own approach to solving problems within their domain
+            - Keep your final responses to users concise and focused on the answer, not the process
+            - In final responses to users, don't repeat the agent's full chain of reasoning unless specifically requested
+            - If you want to know more about what an agent can do, you are allowed to first ask the agent to describe its capabilities
+            
+            CRITICAL: When calling functions, ALWAYS use the actual conversation ID "{conversation_id}" instead of placeholders like "current_conversation" or "unique_conversation_id". This is essential for document search functions to work correctly.
+            """
+            chat_history.add_system_message(system_message)
+
+            # Add conversation history
+            for message in self.conversations[conversation_id]:
+                if message["role"] == "user":
+                    chat_history.add_user_message(message["content"])
+                elif message["role"] == "assistant":
+                    chat_history.add_assistant_message(message["content"])
+
+            # Track which agents were used
+            agents_used = []
+            execution_trace = []
+
             # Get the chat service
             chat_service = self.kernel.get_service("chat-gpt")
+
+            # Before making the API call, log the full payload that will be sent
+            logger.debug(f"Using conversation_id in query: {conversation_id}")
 
             # Set up function calling behavior
             settings = PromptExecutionSettings()
             settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
 
-            # Add a note to only use functions when absolutely necessary
-            settings.extension_data = {"function_call_guidance": "only_when_necessary"}
+            # Add conversation ID and guidance to the extension data as a dictionary (not a JSON string)
+            extension_data = {
+                "function_call_guidance": "only_when_necessary",
+                "conversation_id": conversation_id,
+                "prefer_rag_for_documents": True  # Hint to prefer RAG for document-related queries
+            }
+            settings.extension_data = extension_data  # Use the dictionary directly, not json.dumps()
+            
+            # Log the exact settings being used for debugging
+            logger.debug(f"Using prompt execution settings: {settings.__dict__}")
+            logger.debug(f"Extension data: {settings.extension_data}")
 
-            print("Using Semantic Kernel for function calling")
+            debug_print("Using Semantic Kernel for function calling")
 
-            # Process the query with function calling
-            result = await chat_service.get_chat_message_contents(
-                chat_history=chat_history,
-                settings=settings,
-                kernel=self.kernel
-            )
+            # Get streaming result from chat service
+            try:
+                # Log that we're about to make the API call
+                logger.debug("Getting streaming result from chat service")
+                
+                # Add the real conversation ID to the kernel's global variables
+                # This is a backup approach to ensure the RAG plugin can access it
+                if self.kernel and hasattr(self.kernel, 'variables'):
+                    try:
+                        # Clear any old value first to avoid conflicts
+                        self.kernel.variables.clear('conversation_id')
+                        self.kernel.variables.set('conversation_id', conversation_id)
+                        logger.debug(f"Added conversation_id={conversation_id} to kernel global variables")
+                    except Exception as var_error:
+                        logger.warning(f"Could not add conversation_id to kernel variables: {var_error}")
+                
+                # Debugging: Add a callback for function calls to check parameters
+                def debug_function_args(func_name, args):
+                    logger.debug(f"FUNCTION CALL: {func_name}")
+                    logger.debug(f"FUNCTION ARGS: {args}")
+                    # Check if conversation_id is in the arguments
+                    if isinstance(args, dict) and 'conversation_id' in args:
+                        if args['conversation_id'] != conversation_id and args['conversation_id'] in ["current_conversation", "current_conversation_id", "unique_conversation_id"]:
+                            logger.warning(f"Mismatched conversation_id in function call! Got {args['conversation_id']}, expected {conversation_id}")
+                            # Fix the conversation_id in the arguments
+                            args['conversation_id'] = conversation_id
+                            logger.info(f"Fixed conversation_id in function args to: {conversation_id}")
+                    return args
+                
+                # Add this debugging function to the kernel if possible
+                if self.kernel and hasattr(self.kernel, 'add_function_callback'):
+                    try:
+                        self.kernel.add_function_callback(debug_function_args)
+                        logger.debug("Added function argument debugging callback")
+                    except Exception as callback_error:
+                        logger.warning(f"Could not add function callback: {callback_error}")
+                
+                # Process the chat history through the chat model
+                result = await chat_service.get_chat_message_contents(
+                    chat_history=chat_history, 
+                    settings=settings
+                )
+                
+                # Check if there are any function calls
+                if hasattr(result, 'function_calls') and result.function_calls:
+                    logger.info(f"Function calls returned: {len(result.function_calls)}")
+                    for i, func_call in enumerate(result.function_calls):
+                        logger.info(f"Function call {i+1}: {func_call.name}")
+                        logger.debug(f"Function arguments: {func_call.arguments}")
+                        
+                        # Parse the arguments and check conversation_id
+                        try:
+                            import json
+                            args = json.loads(func_call.arguments)
+                            if 'conversation_id' in args:
+                                logger.info(f"conversation_id in function call: {args['conversation_id']}")
+                                # If it's not the actual conversation ID, this is where we would fix it
+                                if args['conversation_id'] != conversation_id and args['conversation_id'] == 'current_conversation':
+                                    logger.warning(f"conversation_id mismatch: function got '{args['conversation_id']}' but should be '{conversation_id}'")
+                        except json.JSONDecodeError:
+                            logger.warning(f"Could not parse function arguments: {func_call.arguments}")
+                else:
+                    logger.info("No function calls returned from chat service")
+                    
+                # Process the result content
+                debug_print(f"Got result: {result.content if hasattr(result, 'content') else str(result)[:50]}")
+            except Exception as e:
+                logger.error(f"Error getting chat message: {e}")
+                raise
 
             # Extract the response content
             # Handle different result formats
@@ -437,8 +683,18 @@ class AgentRuntime:
             function_calls = []
             if hasattr(result, 'function_calls'):
                 function_calls = result.function_calls
+                logger.info(f"Function calls detected: {len(function_calls)}")
+                for fc in function_calls:
+                    logger.info(f"Function call: {fc.name} with args: {fc.arguments}")
             elif isinstance(result, list) and len(result) > 0 and hasattr(result[0], 'function_calls'):
                 function_calls = result[0].function_calls
+                logger.info(f"Function calls detected (from list): {len(function_calls)}")
+                for fc in function_calls:
+                    logger.info(f"Function call: {fc.name} with args: {fc.arguments}")
+            else:
+                logger.info("No function calls detected in result")
+                logger.debug(f"Result type: {type(result)}")
+                logger.debug(f"Result attributes: {dir(result) if hasattr(result, '__dir__') else 'No attributes'}")
 
             if function_calls:
                 for function_call in function_calls:
@@ -447,6 +703,13 @@ class AgentRuntime:
                     agents_used.append(agent_id)
                     execution_trace.append(f"Called {agent_id} with query: {query}")
                     logger.debug(f"Function call: {function_name} with args: {function_call.arguments}")
+                    
+                    # Check specifically for RAG usage
+                    if function_name.startswith('rag.'):
+                        logger.info(f"*** RAG FUNCTION CALLED: {function_name} ***")
+                        logger.info(f"RAG args: {function_call.arguments}")
+            else:
+                logger.warning(f"No function calls made for query: '{query}' (might need RAG: {might_need_rag})")
 
             # Create the response message
             response_message = {
@@ -577,7 +840,7 @@ class AgentRuntime:
                 chat_history = ChatHistory()
 
                 # Add system message
-                system_message = """
+                system_message = f"""
                 You are an intelligent orchestrator that coordinates between human users and specialized agent functions. Your primary responsibilities are:
 
                 1. COORDINATION: Analyze user queries to determine if they require specialized agent capabilities
@@ -595,6 +858,8 @@ class AgentRuntime:
                 - Keep your final responses to users concise and focused on the answer, not the process
                 - In final responses to users, don't repeat the agent's full chain of reasoning unless specifically requested
                 - If you want to know more about what an agent can do, you are allowed to first ask the agent to describe its capabilities
+                
+                CRITICAL: When calling functions, ALWAYS use the actual conversation ID "{conversation_id}" instead of placeholders like "current_conversation" or "unique_conversation_id". This is essential for document search functions to work correctly.
                 """
                 debug_print("DEBUG: Adding system message to chat history")
                 chat_history.add_system_message(system_message)
@@ -616,8 +881,17 @@ class AgentRuntime:
                 settings = PromptExecutionSettings()
                 settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
 
-                # Add a note to only use functions when absolutely necessary
-                settings.extension_data = {"function_call_guidance": "only_when_necessary"}
+                # Add conversation ID and guidance to the extension data as a dictionary (not a JSON string)
+                extension_data = {
+                    "function_call_guidance": "only_when_necessary",
+                    "conversation_id": conversation_id,
+                    "prefer_rag_for_documents": True  # Hint to prefer RAG for document-related queries
+                }
+                settings.extension_data = extension_data  # Use the dictionary directly, not json.dumps()
+                
+                # Log the exact settings being used for debugging
+                logger.debug(f"Using prompt execution settings: {settings.__dict__}")
+                logger.debug(f"Extension data: {settings.extension_data}")
 
                 debug_print("Using Semantic Kernel for function calling")
 

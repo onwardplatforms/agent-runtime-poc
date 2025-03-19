@@ -26,6 +26,18 @@ export type StreamChunk = {
         response: string;
     } | string;  // Can be either an object or a string
     agent_id?: string;  // Used when agent_response is a string
+    rag_retrieval?: {
+        summary?: string;          // Summary of the retrieved information
+        document_name?: string;    // Name of the document
+        document_id?: string;      // ID of the document
+        chunk_index?: number;      // Index of the chunk in the results
+        relevance_score?: number;  // Relevance score (0-1)
+        content?: string;          // Excerpt content (preview)
+        full_content?: string;     // Full content of the chunk
+        total_chunks?: number;     // Total number of chunks found
+        document_count?: number;   // Total number of documents searched
+        error?: string;            // Error message if retrieval failed
+    };
     response?: string;
     conversation_id?: string;
     processing_time?: number;
@@ -65,6 +77,23 @@ export type UploadedFile = {
 export type UploadResponse = {
     message: string;
     files: UploadedFile[];
+    error?: string;
+};
+
+// Add this type definition after the UploadResponse type
+export type Document = {
+    document_id: string;
+    conversation_id?: string;
+    filename: string;
+    file_size: number;
+    mime_type?: string;
+    chunk_count: number;
+    created_at?: string;
+    status: string;
+};
+
+export type DocumentListResponse = {
+    documents: Document[];
     error?: string;
 };
 
@@ -420,6 +449,74 @@ export async function deleteFile(fileId: string, conversationId?: string): Promi
         return {
             success: false,
             message: `Error: ${error instanceof Error ? error.message : String(error)}`
+        };
+    }
+}
+
+// Add this function after the deleteFile function
+export async function listDocuments(conversationId?: string): Promise<DocumentListResponse> {
+    try {
+        console.log(`Listing documents${conversationId ? ` for conversation ${conversationId}` : ''}`);
+
+        // Check API availability first
+        console.log("Checking API availability...");
+        const isAvailable = await checkApiAvailability();
+        console.log(`API availability check result: ${isAvailable}`);
+
+        if (!isAvailable) {
+            console.error("API server is not available");
+            throw new Error('API server is not available. Please make sure it is running at ' + API_BASE_URL);
+        }
+
+        // Build the URL with optional query parameter
+        let url = `${API_BASE_URL}/api/rag/documents`;
+        if (conversationId) {
+            url += `?conversation_id=${encodeURIComponent(conversationId)}`;
+        }
+        console.log(`Sending request to: ${url}`);
+
+        // Send the request
+        console.log("Sending GET request...");
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+            mode: 'cors',
+        });
+
+        console.log(`List documents response status: ${response.status} ${response.statusText}`);
+
+        let data;
+        let textResponse;
+        try {
+            console.log("Reading response text...");
+            textResponse = await response.text();
+            console.log(`Raw response text (first 200 chars): ${textResponse.substring(0, 200)}`);
+
+            console.log("Parsing JSON response...");
+            data = JSON.parse(textResponse);
+            console.log("JSON parsing successful");
+        } catch (error) {
+            console.error("Failed to parse response as JSON:", error);
+            console.error("Full response text:", textResponse);
+            throw new Error(`Failed to parse server response: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        console.log("List documents response data:", data);
+        console.log(`Found ${data?.documents?.length || 0} documents`);
+
+        if (!response.ok) {
+            console.error("Response not OK:", data);
+            throw new Error(data.detail || data.error || `Failed to list documents with status: ${response.status}`);
+        }
+
+        return data as DocumentListResponse;
+    } catch (error) {
+        console.error('Error listing documents:', error);
+        return {
+            documents: [],
+            error: `Error: ${error instanceof Error ? error.message : String(error)}`
         };
     }
 } 

@@ -1,0 +1,36 @@
+
+CONFIDENTIALITY AND NON-DISCLOSURE AGREEMENT
+
+This Confidentiality and Non-Disclosure Agreement (the "Agreement") is entered into as of [Date] by and between:
+
+Onward Platforms, Inc., a Delaware corporation with its principal place of business at 123 Tech Way, San Francisco, CA 94105 ("Company")
+
+and
+
+[Recipient Name], an individual/entity with an address at [Recipient Address] ("Recipient").
+
+1. PURPOSE
+The purpose of this Agreement is to protect the confidential and proprietary information of the Company which may be disclosed to the Recipient for the purpose of [describe business purpose] (the "Purpose").
+
+2. CONFIDENTIAL INFORMATION
+"Confidential Information" means any information disclosed by the Company to the Recipient, either directly or indirectly, in writing, orally or by inspection of tangible objects, that is designated as "Confidential," "Proprietary" or some similar designation, or that should reasonably be understood to be confidential given the nature of the information and the circumstances of disclosure.
+
+3. TERM
+This Agreement shall remain in effect for a period of 3 years from the date of execution.
+
+4. GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with the laws of the State of California.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
+
+COMPANY: Onward Platforms, Inc.
+
+By: ____________________________
+Name: John Smith
+Title: CEO
+
+RECIPIENT:
+
+By: ____________________________
+Name: [Recipient Name]
+Title: [Recipient Title]

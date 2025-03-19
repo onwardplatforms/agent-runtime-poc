@@ -143,11 +143,30 @@ export function AgentCallMessage({ agentId, query }: { agentId: string; query: s
 export function AgentResponseMessage({ agentId, response }: { agentId: string; response: string }) {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Calculate a preview of the response (first 50 characters)
+    // Calculate a preview of the response by getting first two sentences
     const getPreview = () => {
-        return response.length > 50
-            ? response.substring(0, 50) + " ..."
-            : response;
+        // Find the end of first two sentences by looking for .!? followed by space or end
+        const sentenceRegex = /[.!?](?:\s|$)/g;
+        let match;
+        let endIndex = 0;
+        let count = 0;
+
+        while ((match = sentenceRegex.exec(response)) !== null) {
+            count++;
+            if (count >= 2) {
+                endIndex = match.index + 1;
+                break;
+            }
+        }
+
+        // If we didn't find two sentences, or they're very short, just show first 100 chars
+        if (endIndex === 0 || endIndex < 50) {
+            return response.length > 100
+                ? response.substring(0, 100) + " ..."
+                : response;
+        }
+
+        return response.substring(0, endIndex) + (response.length > endIndex ? " ..." : "");
     };
 
     return (
@@ -187,6 +206,105 @@ export function AgentResponseMessage({ agentId, response }: { agentId: string; r
                     )}
 
                     <div className="mt-2 text-xs text-gray-500">
+                        <span className="opacity-50">
+                            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function RAGRetrievalMessage({
+    documentName,
+    relevanceScore,
+    content,
+    fullContent,
+    isError = false,
+    errorMessage,
+    summary
+}: {
+    documentName?: string,
+    relevanceScore?: number,
+    content?: string,
+    fullContent?: string,
+    isError?: boolean,
+    errorMessage?: string,
+    summary?: string
+}) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // Format the relevance score as a percentage
+    const formattedScore = relevanceScore !== undefined
+        ? `${Math.round(relevanceScore * 100)}%`
+        : undefined;
+
+    return (
+        <div className="py-2">
+            <div className="flex">
+                <div className="max-w-[90%] text-base">
+                    {/* Header section */}
+                    <div className="text-sm font-medium text-emerald-400 mb-1 flex items-center">
+                        <span className="mr-1.5">💡</span>
+                        {isError ? "Knowledge Search Error" : summary ? "Knowledge Search" : "Knowledge: " + (documentName || "Document")}
+                        {formattedScore && !isError && !summary && (
+                            <span className="ml-2 text-xs bg-emerald-400/10 px-2 py-0.5 rounded-full text-emerald-300">
+                                Relevance: {formattedScore}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Error message */}
+                    {isError && errorMessage && (
+                        <div className="p-3 bg-red-900/30 border border-red-800/50 rounded-md text-gray-300">
+                            {errorMessage}
+                        </div>
+                    )}
+
+                    {/* Summary message */}
+                    {summary && (
+                        <div className="p-3 bg-emerald-900/20 border border-emerald-800/30 rounded-md text-gray-300">
+                            {summary}
+                        </div>
+                    )}
+
+                    {/* Regular document chunk */}
+                    {!isError && !summary && (
+                        <div className="bg-emerald-900/20 border border-emerald-800/30 rounded-md overflow-hidden">
+                            {/* Collapsed view */}
+                            {!isExpanded && content && (
+                                <div className="p-3">
+                                    <div className="text-gray-300 whitespace-pre-wrap line-clamp-2">
+                                        {content}
+                                    </div>
+                                    <button
+                                        onClick={() => setIsExpanded(true)}
+                                        className="text-xs text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1 rounded-full mt-2 transition-colors"
+                                    >
+                                        Show more
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Expanded view */}
+                            {isExpanded && fullContent && (
+                                <div className="p-3">
+                                    <div className="text-gray-300 whitespace-pre-wrap">
+                                        <ContentRenderer content={fullContent} />
+                                    </div>
+                                    <button
+                                        onClick={() => setIsExpanded(false)}
+                                        className="text-xs text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1 rounded-full mt-2 transition-colors"
+                                    >
+                                        Show less
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="mt-1 text-xs text-gray-500">
                         <span className="opacity-50">
                             {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>

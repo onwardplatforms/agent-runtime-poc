@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { ChatInput } from "@/components/chat-input";
-import { AgentCallMessage, AgentResponseMessage, Message } from "@/components/message";
+import { AgentCallMessage, AgentResponseMessage, Message, RAGRetrievalMessage } from "@/components/message";
 import { StreamChunk, streamQuery, uploadFiles, UploadedFile as ApiUploadedFile, deleteFile } from "@/lib/api";
 import { Loader2, ArrowDown, Zap } from "lucide-react";
 import { LoadingDots } from "@/components/loading-dots";
@@ -55,6 +55,19 @@ type UploadedFile = {
     stored_name?: string;
 };
 
+type RagRetrieval = {
+    id: string;
+    userMessageId: string;
+    documentName?: string;
+    documentId?: string;
+    relevanceScore?: number;
+    content?: string;
+    fullContent?: string;
+    isError?: boolean;
+    errorMessage?: string;
+    summary?: string;
+};
+
 // Define a ref type that exposes the reset method
 export type ChatRef = {
     reset: () => void;
@@ -64,6 +77,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [agentCalls, setAgentCalls] = useState<AgentCall[]>([]);
     const [agentResponses, setAgentResponses] = useState<AgentResponse[]>([]);
+    const [ragRetrievals, setRagRetrievals] = useState<RagRetrieval[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingMessageIds, setProcessingMessageIds] = useState<Set<string>>(new Set());
     const [conversationId, setConversationId] = useState<string>("");
@@ -88,6 +102,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             setMessages([]);
             setAgentCalls([]);
             setAgentResponses([]);
+            setRagRetrievals([]);
             setIsProcessing(false);
             setProcessingMessageIds(new Set());
             setCurrentMessageId(null);
@@ -524,6 +539,51 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                         }
                     }
 
+                    // Handle RAG retrieval events
+                    if (chunk.rag_retrieval) {
+                        console.log("Received RAG retrieval:", chunk.rag_retrieval);
+
+                        const retrievalId = uuidv4();
+
+                        // Handle different types of RAG retrieval events
+                        if (chunk.rag_retrieval.error) {
+                            // Error event
+                            setRagRetrievals((prev) => [
+                                ...prev,
+                                {
+                                    id: retrievalId,
+                                    userMessageId,
+                                    isError: true,
+                                    errorMessage: chunk.rag_retrieval.error
+                                }
+                            ]);
+                        } else if (chunk.rag_retrieval.summary) {
+                            // Summary event
+                            setRagRetrievals((prev) => [
+                                ...prev,
+                                {
+                                    id: retrievalId,
+                                    userMessageId,
+                                    summary: chunk.rag_retrieval.summary
+                                }
+                            ]);
+                        } else if (chunk.rag_retrieval.document_name) {
+                            // Document chunk retrieval event
+                            setRagRetrievals((prev) => [
+                                ...prev,
+                                {
+                                    id: retrievalId,
+                                    userMessageId,
+                                    documentName: chunk.rag_retrieval.document_name,
+                                    documentId: chunk.rag_retrieval.document_id,
+                                    relevanceScore: chunk.rag_retrieval.relevance_score,
+                                    content: chunk.rag_retrieval.content,
+                                    fullContent: chunk.rag_retrieval.full_content
+                                }
+                            ]);
+                        }
+                    }
+
                     // Handle final response
                     if (chunk.complete && chunk.response) {
                         responseContent = chunk.response;
@@ -596,7 +656,8 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         console.log("Rendering message groups with:", {
             messages: messages.length,
             agentCalls: agentCalls.length,
-            agentResponses: agentResponses.length
+            agentResponses: agentResponses.length,
+            ragRetrievals: ragRetrievals.length
         });
 
         const result = [];
@@ -618,11 +679,36 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                 />
             );
 
-            // If this is a user message, show any agent calls and responses associated with it
+            // If this is a user message, show any agent calls, responses, and RAG retrievals associated with it
             if (message.role === "user") {
+                // Find RAG retrievals for this user message
+                const retrievalsForThisMessage = ragRetrievals.filter(
+                    retrieval => retrieval.userMessageId === message.id
+                );
+
                 // Find agent calls and responses for this specific user message
                 const callsForThisMessage = agentCalls.filter(call => call.userMessageId === message.id);
                 const responsesForThisMessage = agentResponses.filter(resp => resp.userMessageId === message.id);
+
+                if (retrievalsForThisMessage.length > 0) {
+                    console.log(`Displaying ${retrievalsForThisMessage.length} RAG retrievals for message:`, message.content);
+
+                    // Display RAG retrievals first
+                    retrievalsForThisMessage.forEach(retrieval => {
+                        result.push(
+                            <RAGRetrievalMessage
+                                key={retrieval.id}
+                                documentName={retrieval.documentName}
+                                relevanceScore={retrieval.relevanceScore}
+                                content={retrieval.content}
+                                fullContent={retrieval.fullContent}
+                                isError={retrieval.isError}
+                                errorMessage={retrieval.errorMessage}
+                                summary={retrieval.summary}
+                            />
+                        );
+                    });
+                }
 
                 if (callsForThisMessage.length > 0 || responsesForThisMessage.length > 0) {
                     console.log(`Displaying ${callsForThisMessage.length} agent calls and ${responsesForThisMessage.length} responses for message:`, message.content);
@@ -656,11 +742,11 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
 
                     // Display any remaining responses that don't have a matching call
                     const displayedAgentIds = new Set(callsForThisMessage.map(call => call.agentId));
-                    const remainingResponses = responsesForThisMessage.filter(
+                    const unmatchedResponses = responsesForThisMessage.filter(
                         resp => !displayedAgentIds.has(resp.agentId)
                     );
 
-                    remainingResponses.forEach(response => {
+                    unmatchedResponses.forEach(response => {
                         result.push(
                             <AgentResponseMessage
                                 key={response.id}

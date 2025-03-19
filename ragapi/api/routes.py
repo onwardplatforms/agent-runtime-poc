@@ -339,6 +339,38 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=f"Error uploading document: {str(e)}")
 
 
+@router.get("/documents")
+async def list_documents(
+    conversation_id: Optional[str] = None,
+    storage: BaseStorage = Depends(get_storage)
+):
+    """List all documents, optionally filtered by conversation_id."""
+    try:
+        logger.info(f"Listing documents for conversation_id: {conversation_id}")
+        documents = await storage.list_documents(conversation_id)
+        
+        # Format the response
+        formatted_documents = []
+        for doc in documents:
+            formatted_documents.append({
+                "document_id": doc["document_id"],
+                "conversation_id": doc.get("conversation_id"),
+                "filename": doc["metadata"].get("filename", "unknown"),
+                "file_size": doc["metadata"].get("file_size", 0),
+                "mime_type": doc["metadata"].get("mime_type"),
+                "chunk_count": doc.get("chunk_count", 0),
+                "created_at": doc.get("created_at"),
+                "status": DocumentStatus.INDEXED
+            })
+        
+        logger.info(f"Found {len(formatted_documents)} documents")
+        return {"documents": formatted_documents}
+        
+    except Exception as e:
+        logger.error(f"Error listing documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
+
+
 @router.get("/documents/{document_id}", response_model=DocumentStatusResponse)
 async def get_document_status(
     document_id: str, 
