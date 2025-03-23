@@ -1,9 +1,10 @@
 import logging
-import numpy as np
-from typing import List, Dict, Any, Optional
+from typing import List
 
-from ..models import EmbeddingModel
+import numpy as np
+
 from ...config import settings
+from ..models import EmbeddingModel
 
 logger = logging.getLogger("ragapi.embedding.local")
 

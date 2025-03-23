@@ -5,11 +5,9 @@ This plugin provides functions for searching documents using the RAG API.
 
 import logging
 import os
-import aiohttp
-import json
-from typing import Dict, Any, List, Optional
-import asyncio
+from typing import Any, Dict
 
+import aiohttp
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
 
 logging.basicConfig(

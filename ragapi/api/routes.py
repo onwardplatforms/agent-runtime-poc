@@ -1,29 +1,29 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
-from typing import Optional, List, Dict, Any
-import uuid
-import os
-import logging
-from pathlib import Path
-import asyncio
 import json
+import logging
+import os
 import time
+import uuid
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from ..config import settings
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+
+from ..api.dependencies import get_embedding_model_instance, get_storage
 from ..api.models import (
-    DocumentResponse,
-    DocumentStatusResponse,
-    DocumentStatus,
-    QueryRequest,
-    QueryResponse,
     ChunkInfo,
     DocumentMetadata,
-    ProcessingStage
+    DocumentResponse,
+    DocumentStatus,
+    DocumentStatusResponse,
+    ProcessingStage,
+    QueryRequest,
+    QueryResponse,
 )
-from ..api.dependencies import get_storage, get_embedding_model_instance, get_text_chunker
+from ..config import settings
 from ..document.extractor import extract_document
-from ..storage.base import Chunk, BaseStorage
 from ..embedding.models import EmbeddingModel
+from ..storage.base import BaseStorage, Chunk
 
 # Setup logging
 logger = logging.getLogger("ragapi")

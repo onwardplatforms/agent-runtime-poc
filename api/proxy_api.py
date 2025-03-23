@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 
+import json
 import logging
 import os
-import json
 
 import aiohttp
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from starlette.responses import JSONResponse, StreamingResponse, Response
-from fastapi.staticfiles import StaticFiles
+from starlette.responses import JSONResponse, Response, StreamingResponse
 
 # Configure logging
 logging.basicConfig(

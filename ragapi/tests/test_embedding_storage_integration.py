@@ -1,16 +1,16 @@
 import os
-import pytest
-import pytest_asyncio
+import shutil
 import tempfile
 import uuid
-import shutil
-from pathlib import Path
 
-from ragapi.storage.providers.filesystem import FilesystemStorage
-from ragapi.embedding.models import get_embedding_model
+import pytest
+import pytest_asyncio
+
 from ragapi.document.chunker import get_chunker
 from ragapi.document.extractor import extract_document
+from ragapi.embedding.models import get_embedding_model
 from ragapi.storage.base import Chunk
+from ragapi.storage.providers.filesystem import FilesystemStorage
 
 
 @pytest_asyncio.fixture

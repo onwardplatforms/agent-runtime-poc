@@ -1,6 +1,6 @@
-from typing import Dict, Any, Union
-from pathlib import Path
 import logging
+from pathlib import Path
+from typing import Any, Dict, Union
 
 from ..extractor import FileExtractor
 

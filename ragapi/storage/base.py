@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Union
 import uuid
-import numpy as np
+from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 
 class Chunk:
@@ -47,7 +48,6 @@ class BaseStorage(ABC):
         Returns:
             Dictionary with initialization status and details.
         """
-        pass
         
     @abstractmethod
     async def add_chunks(
@@ -63,7 +63,6 @@ class BaseStorage(ABC):
         Returns:
             List of chunk IDs that were added
         """
-        pass
         
     @abstractmethod
     async def get_chunk(
@@ -79,7 +78,6 @@ class BaseStorage(ABC):
         Returns:
             The chunk if found, None otherwise
         """
-        pass
         
     @abstractmethod
     async def search_chunks(
@@ -101,7 +99,6 @@ class BaseStorage(ABC):
         Returns:
             List of chunks, ordered by similarity
         """
-        pass
         
     @abstractmethod
     async def delete_document(
@@ -117,7 +114,6 @@ class BaseStorage(ABC):
         Returns:
             Number of chunks deleted
         """
-        pass
         
     @abstractmethod
     async def list_documents(
@@ -132,7 +128,6 @@ class BaseStorage(ABC):
         Returns:
             List of document metadata
         """
-        pass
         
     @abstractmethod
     async def get_storage_info(self) -> Dict[str, Any]:
@@ -147,7 +142,6 @@ class BaseStorage(ABC):
             - size: Total size of stored data in bytes
             - location: Physical location of data
         """
-        pass
         
     @abstractmethod
     async def health_check(self) -> Dict[str, Any]:
@@ -160,4 +154,3 @@ class BaseStorage(ABC):
             - message: Human-readable message
             - details: Additional details about the health check
         """
-        pass

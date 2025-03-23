@@ -2,22 +2,19 @@
 
 import asyncio
 import json
+import logging
+import os
 import time
 import uuid
-import os
-import logging
-from flask import Flask, request, jsonify, Response, stream_with_context
-from dotenv import load_dotenv
 
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.streaming_chat_message_content import StreamingChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
-from semantic_kernel.functions import KernelArguments
+from dotenv import load_dotenv
+from flask import Flask, Response, jsonify, request, stream_with_context
 
 # Import our custom plugin
 from plugins.math_plugin import MathPlugin
+from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
+from semantic_kernel.contents import ChatHistory
 
 app = Flask(__name__)
 
@@ -66,9 +63,12 @@ kernel = Kernel()
 
 # Initialize the OpenAI service with the API key
 try:
-    from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion, OpenAIChatPromptExecutionSettings
+    from semantic_kernel.connectors.ai.open_ai import (
+        OpenAIChatCompletion,
+        OpenAIChatPromptExecutionSettings,
+    )
     from semantic_kernel.filters import AutoFunctionInvocationContext, FilterTypes
-    
+
     # Initialize chat service with appropriate settings
     chat_service = OpenAIChatCompletion(service_id="chat-gpt", ai_model_id="gpt-4o", api_key=API_KEY)
     

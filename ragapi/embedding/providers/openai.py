@@ -1,12 +1,11 @@
-import os
 import logging
-import numpy as np
-from typing import List, Dict, Any, Optional
+import os
+from typing import List
+
 import aiohttp
-import json
+import numpy as np
 
 from ..models import EmbeddingModel
-from ...config import settings
 
 logger = logging.getLogger("ragapi.embedding.openai")
 

@@ -1,7 +1,7 @@
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Union
-from pathlib import Path
 import logging
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Dict, Union
 
 logger = logging.getLogger("ragapi.extractor")
 
@@ -20,7 +20,6 @@ class FileExtractor(ABC):
         Returns:
             Extracted text
         """
-        pass
     
     @abstractmethod
     async def get_metadata(self, file_path: Union[str, Path]) -> Dict[str, Any]:
@@ -33,7 +32,6 @@ class FileExtractor(ABC):
         Returns:
             File metadata
         """
-        pass
 
 
 class TextExtractor(FileExtractor):

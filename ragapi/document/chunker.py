@@ -1,9 +1,10 @@
-from typing import List, Dict, Any, Optional, Tuple
-import re
 import logging
-import nltk
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
+import nltk
 
 # Download necessary NLTK data if not already present
 try:
@@ -42,7 +43,6 @@ class ChunkingStrategy(ABC):
                 - 'text': The chunk text
                 - 'metadata': A dictionary of metadata for the chunk
         """
-        pass
 
 
 class SimpleChunkingStrategy(ChunkingStrategy):
@@ -292,7 +292,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             is_list = self.is_list_item(paragraph)
             is_table = self.is_table(paragraph)
             
-            segment_importance = self.get_segment_importance(paragraph)
+            self.get_segment_importance(paragraph)
             
             # Update heading stack if this is a heading
             if is_heading:

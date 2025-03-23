@@ -1,9 +1,7 @@
-import os
-import pytest
 import tempfile
-from pathlib import Path
-import httpx
+
 from fastapi.testclient import TestClient
+
 from api.proxy_api import app
 from runtime.features.rag import DEFAULT_DOCUMENTS_PATH
 

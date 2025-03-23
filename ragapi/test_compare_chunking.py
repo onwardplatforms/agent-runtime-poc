@@ -5,10 +5,9 @@ This script demonstrates the differences between the two chunking approaches
 on a sample document with various structures.
 """
 
-import os
+import logging
 import sys
 from pathlib import Path
-import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +19,6 @@ if str(ragapi_path) not in sys.path:
     sys.path.append(str(ragapi_path))
 
 from ragapi.document.chunker import get_chunker
-from ragapi.document.models import DocumentChunk
 
 # Sample document with various structures to demonstrate chunking differences
 SAMPLE_DOCUMENT = """# Advanced Chunking Strategies for RAG Systems

@@ -1,11 +1,13 @@
 import os
-import pytest
+from unittest.mock import patch
+
 import numpy as np
-from unittest.mock import patch, MagicMock, AsyncMock
+import pytest
+
+from ragapi.embedding.models import get_embedding_model
 
 # Import the embedding models
 from ragapi.embedding.providers.local import SentenceTransformerEmbedding
-from ragapi.embedding.models import get_embedding_model, EmbeddingModel
 
 
 # Test the local embedding provider

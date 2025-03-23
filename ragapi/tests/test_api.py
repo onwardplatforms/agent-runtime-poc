@@ -1,9 +1,5 @@
 import pytest
 from fastapi.testclient import TestClient
-import os
-import io
-import tempfile
-from pathlib import Path
 
 from ..main import app
 

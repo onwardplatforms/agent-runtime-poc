@@ -1,12 +1,9 @@
-import pytest
-from unittest.mock import MagicMock
-import re
 
 from ragapi.document.chunker import (
-    TextChunker, 
-    SimpleChunkingStrategy, 
     SemanticChunkingStrategy,
-    get_chunker
+    SimpleChunkingStrategy,
+    TextChunker,
+    get_chunker,
 )
 
 

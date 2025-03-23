@@ -6,7 +6,7 @@ import asyncio
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, patch
 
 # Add the parent directory to the path so we can import the runtime modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

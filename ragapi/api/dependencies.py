@@ -1,12 +1,11 @@
-from typing import Optional
 import logging
-from fastapi import Depends
+from typing import Optional
 
+from ..config import settings
+from ..document.chunker import TextChunker, get_chunker
+from ..embedding.models import EmbeddingModel, get_embedding_model
 from ..storage.base import BaseStorage
 from ..storage.providers.filesystem import FilesystemStorage
-from ..embedding.models import EmbeddingModel, get_embedding_model
-from ..document.chunker import TextChunker, get_chunker
-from ..config import settings
 
 logger = logging.getLogger("ragapi.dependencies")
 

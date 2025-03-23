@@ -2,6 +2,7 @@ from ..models import EmbeddingModel
 
 # Import providers
 from .local import SentenceTransformerEmbedding
+
 # Only import OpenAI provider if we have the dependency
 try:
     from .openai import OpenAIEmbedding

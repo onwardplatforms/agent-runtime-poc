@@ -1,6 +1,9 @@
 import math
+
 import pytest
+
 from agents.math_agent.plugins.math_plugin import MathPlugin
+
 
 @pytest.fixture
 def math_plugin():

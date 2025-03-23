@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # Import the API module
 from runtime.api import app, get_runtime
 
+
 class TestAPI:
     """Tests for the API functionality."""
 

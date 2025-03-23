@@ -1,12 +1,12 @@
 import os
-import pytest
-import pytest_asyncio
 import tempfile
-from fastapi.testclient import TestClient
 from unittest.mock import patch
 
-from ragapi.main import app
+import pytest
+from fastapi.testclient import TestClient
+
 from ragapi.config import settings
+from ragapi.main import app
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ def test_health_check_with_openai_provider(client):
     """Test the health check endpoint with OpenAI embedding provider."""
     # Skip if OpenAI package is not installed
     try:
-        import openai
+        pass
     except ImportError:
         pytest.skip("OpenAI package not installed")
     
@@ -100,7 +100,7 @@ def test_document_upload_with_mocked_openai_provider(client):
     """Test document upload with mocked OpenAI embedding provider."""
     # Skip if OpenAI package is not installed
     try:
-        from ragapi.embedding.providers.openai import OpenAIEmbedding
+        pass
     except ImportError:
         pytest.skip("OpenAI package not installed")
     
@@ -155,7 +155,7 @@ def test_query_with_mocked_openai_provider(client):
     """Test document query with mocked OpenAI embedding provider."""
     # Skip if OpenAI package is not installed
     try:
-        from ragapi.embedding.providers.openai import OpenAIEmbedding
+        pass
     except ImportError:
         pytest.skip("OpenAI package not installed")
     

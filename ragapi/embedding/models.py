@@ -1,9 +1,9 @@
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Union
-import numpy as np
 import logging
 import os
-from pathlib import Path
+from abc import ABC, abstractmethod
+from typing import List
+
+import numpy as np
 
 from ..config import settings
 
@@ -16,7 +16,6 @@ class EmbeddingModel(ABC):
     @abstractmethod
     async def initialize(self) -> None:
         """Initialize the embedding model."""
-        pass
     
     @abstractmethod
     async def get_embeddings(self, texts: List[str]) -> List[np.ndarray]:
@@ -29,13 +28,11 @@ class EmbeddingModel(ABC):
         Returns:
             List of embeddings as numpy arrays
         """
-        pass
     
     @property
     @abstractmethod
     def embedding_dim(self) -> int:
         """Get the dimension of the embeddings."""
-        pass
 
 
 def get_embedding_model() -> EmbeddingModel:

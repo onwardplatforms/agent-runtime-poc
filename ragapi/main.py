@@ -1,13 +1,13 @@
+import datetime
 import logging
 import os
+
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
-from pathlib import Path
-import datetime
 
-from ragapi.config import settings
 from ragapi.api.routes import router as rag_router
+from ragapi.config import settings
 
 # Configure logging
 logging.basicConfig(

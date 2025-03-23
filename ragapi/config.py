@@ -1,7 +1,8 @@
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
-from typing import Optional, Literal
 import os
+from typing import Literal
+
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):

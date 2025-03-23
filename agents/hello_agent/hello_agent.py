@@ -1,11 +1,10 @@
-import requests
-import json
+import os
 import time
 import uuid
-import os
-from flask import Flask, request, jsonify
+
 import openai
 from dotenv import load_dotenv
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
