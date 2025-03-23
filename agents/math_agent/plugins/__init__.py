@@ -1,1 +1,1 @@
-# This file makes the plugins directory a Python package 
+# This file makes the plugins directory a Python package

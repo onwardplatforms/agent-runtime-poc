@@ -56,7 +56,7 @@ async def health_check():
             raise HTTPException(status_code=500, detail="Documents directory not found")
         if not os.path.exists(settings.embeddings_path):
             raise HTTPException(status_code=500, detail="Embeddings directory not found")
-        
+
         # Check storage health if available
         storage_health = {"status": "unknown"}
         try:
@@ -69,7 +69,7 @@ async def health_check():
                 "status": "error",
                 "message": f"Failed to check storage: {str(e)}"
             }
-            
+
         # Check embedding model if available
         embedding_health = {"status": "unknown"}
         try:
@@ -87,14 +87,14 @@ async def health_check():
                 "status": "error",
                 "message": f"Failed to check embedding model: {str(e)}"
             }
-        
+
         # Calculate overall status
         overall_status = "healthy"
         if storage_health.get("status") == "unhealthy" or embedding_health.get("status") == "error":
             overall_status = "unhealthy"
         elif storage_health.get("status") == "warning":
             overall_status = "warning"
-            
+
         return {
             "status": overall_status,
             "documents_path": settings.documents_path,
@@ -104,7 +104,7 @@ async def health_check():
             "version": "0.1.0",
             "timestamp": datetime.datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return {
@@ -121,7 +121,7 @@ async def storage_info():
         from ragapi.api.dependencies import get_storage
         storage = await get_storage()
         storage_info = await storage.get_storage_info()
-        
+
         return {
             "status": "success",
             "storage": storage_info,

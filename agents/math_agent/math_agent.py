@@ -8,7 +8,7 @@ import time
 import uuid
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, request, stream_with_context
+from flask import Flask, Response, jsonify, request
 
 # Import our custom plugin
 from plugins.math_plugin import MathPlugin
@@ -36,7 +36,7 @@ You are a specialized AI math assistant with the following capabilities:
 4. ALWAYS using available math functions for calculations rather than doing them manually
 5. NEVER guess an answer, you MUST use the functions to calculate the answer
 
-EXTREMELY IMPORTANT: You MUST ACTUALLY INVOKE the math plugin functions for ANY calculation. 
+EXTREMELY IMPORTANT: You MUST ACTUALLY INVOKE the math plugin functions for ANY calculation.
 DO NOT just talk about using them - you MUST ACTUALLY CALL them.
 
 Even for simple calculations like 2+2 or sqrt(625), you MUST INVOKE the plugin functions.
@@ -71,14 +71,14 @@ try:
 
     # Initialize chat service with appropriate settings
     chat_service = OpenAIChatCompletion(service_id="chat-gpt", ai_model_id="gpt-4o", api_key=API_KEY)
-    
+
     # Add service to kernel
     kernel.add_service(chat_service)
-    
+
     # Add a filter to track function calls
     @kernel.filter(filter_type=FilterTypes.AUTO_FUNCTION_INVOCATION)
     async def auto_function_invocation_filter(
-        context: AutoFunctionInvocationContext, 
+        context: AutoFunctionInvocationContext,
         next: callable
     ) -> None:
         # # Before function call
@@ -86,15 +86,15 @@ try:
         # print(f"Function: {context.function.name}")
         # print(f"Arguments: {context.arguments}")
         # print("================================\n")
-        
+
         # Call the function
         await next(context)
-        
+
         # # After function call
         # print(f"\n==== FUNCTION CALL RESULT ====")
         # print(f"Result: {context.function_result}")
         # print("==============================\n")
-        
+
 except ImportError:
     print("OpenAI service not available. Please install the openai package.")
     exit(1)
@@ -113,7 +113,7 @@ chat_function = kernel.add_function(
 @app.route('/api/message', methods=['POST'])
 def receive_message():
     """Endpoint to receive messages from the runtime or external calls."""
-    
+
     message = request.json
     if not message:
         return jsonify({"error": "No message provided"}), 400
@@ -123,7 +123,7 @@ def receive_message():
 
     if stream:
         return Response(
-            stream_with_context(process_message_stream(message)),
+            sse_stream_with_context(process_message_stream(message)),
             content_type='text/event-stream'
         )
     else:
@@ -145,7 +145,7 @@ def receive_message():
             return jsonify({"error": str(e)}), 500
 
 
-def stream_with_context(generator):
+def sse_stream_with_context(generator):
     """Helper that yields SSE lines and ends with [DONE]."""
     try:
         for chunk in generator:
@@ -167,7 +167,7 @@ def process_message_stream(message):
     # Create a chat history for the semantic kernel
     history = ChatHistory()
     history.add_system_message(SYSTEM_MESSAGE)
-    
+
     # If chat history is provided, add it to the history
     chat_history = message.get("chatHistory", [])
     for msg in chat_history:
@@ -175,7 +175,7 @@ def process_message_stream(message):
             history.add_user_message(msg.get("content", ""))
         elif msg.get("role") == "assistant":
             history.add_assistant_message(msg.get("content", ""))
-            
+
     # Add user message
     history.add_user_message(content)
 
@@ -191,7 +191,7 @@ def process_message_stream(message):
         "chunk": "ƒ(x) calling math-agent...",
         "complete": False
     }
-    
+
     try:
         # Setup execution settings with explicit function calling enabled
         settings = OpenAIChatPromptExecutionSettings(
@@ -199,26 +199,26 @@ def process_message_stream(message):
             function_choice_behavior=FunctionChoiceBehavior.Auto(),
             max_tokens=2000
         )
-        
+
         # Set up for streaming
         accumulated_response = ""
         function_calls = []
-        
+
         # Create an asyncio event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         # Stream the response from chat service
         for msg in loop.run_until_complete(
             stream_sk_response(chat_service, history, settings)
         ):
             # Get the message content
             chunk_text = str(msg)
-            
+
             # Check for function call markers in the text
             if "ƒ(x) calling" in chunk_text:
                 function_calls.append(chunk_text)
-                
+
                 # Yield the function call as a separate chunk
                 yield {
                     "messageId": message_id,
@@ -232,10 +232,10 @@ def process_message_stream(message):
                     "complete": False
                 }
                 continue
-                
+
             # Accumulate the response
             accumulated_response += chunk_text
-            
+
             # Yield the chunk
             yield {
                 "messageId": message_id,
@@ -248,10 +248,10 @@ def process_message_stream(message):
                 "chunk": chunk_text,
                 "complete": False
             }
-            
+
             # Small delay to ensure smooth streaming
             time.sleep(0.01)
-            
+
         # Final chunk with the complete response
         yield {
             "messageId": message_id,
@@ -269,7 +269,7 @@ def process_message_stream(message):
         print(f"Error in streaming process: {e}")
         import traceback
         traceback.print_exc()
-        
+
         # Yield an error response
         yield {
             "messageId": message_id,
@@ -296,13 +296,13 @@ async def stream_sk_response(chat_service, chat_history, settings):
 
 def process_message(message):
     """Process a message synchronously."""
-    
+
     content = message.get("content", "")
-    
+
     # Create a chat history for the semantic kernel
     history = ChatHistory()
     history.add_system_message(SYSTEM_MESSAGE)
-    
+
     # If chat history is provided, add it to the history
     chat_history = message.get("chatHistory", [])
     for msg in chat_history:
@@ -310,22 +310,22 @@ def process_message(message):
             history.add_user_message(msg.get("content", ""))
         elif msg.get("role") == "assistant":
             history.add_assistant_message(msg.get("content", ""))
-    
+
     try:
         # Add the user message
         history.add_user_message(content)
-        
+
         # Setup execution settings with explicit function calling enabled
         settings = OpenAIChatPromptExecutionSettings(
             service_id="chat-gpt",
             function_choice_behavior=FunctionChoiceBehavior.Auto(),
             max_tokens=2000
         )
-        
+
         # Create an asyncio event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         # Get response from the chat service
         result = loop.run_until_complete(
             chat_service.get_chat_message_content(
@@ -334,9 +334,9 @@ def process_message(message):
                 kernel=kernel
             )
         )
-        
+
         return str(result)
-    
+
     except Exception as e:
         print(f"Error processing message: {e}")
         import traceback
@@ -346,10 +346,8 @@ def process_message(message):
 
 if __name__ == "__main__":
     print("Starting Math Agent with ID:", AGENT_ID)
-    import logging
+
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
 
     app.run(host="0.0.0.0", port=5100)
-
-

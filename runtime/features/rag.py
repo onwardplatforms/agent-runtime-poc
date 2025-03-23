@@ -36,7 +36,7 @@ class RagPlugin:
         self.description = "Provides doc search for retrieving information from uploaded documents"
         self.rag_api_url = os.environ.get("RAG_API_URL", DEFAULT_RAG_API_URL)
         self._event_queue = None  # Will be set by the agent runtime
-        
+
         logger.info(f"Initialized RAG plugin with API URL: {self.rag_api_url}")
 
     def _get_event_queue(self, kernel_context=None):
@@ -47,19 +47,19 @@ class RagPlugin:
             if event_queue:
                 logger.debug("Retrieved event_queue from kernel context")
                 return event_queue
-                
+
         # Next, try the instance attribute (set by agent_runtime)
         if self._event_queue:
             logger.debug("Using instance _event_queue attribute")
             return self._event_queue
-            
+
         # Finally, try to extract from kernel_context if it's a dict
         if kernel_context is not None and isinstance(kernel_context, dict):
             event_queue = kernel_context.get("event_queue")
             if event_queue:
                 logger.debug("Retrieved event_queue from kernel context dict")
                 return event_queue
-                
+
         logger.debug("No event_queue found")
         return None
 
@@ -107,7 +107,7 @@ class RagPlugin:
 
         # Get event queue for UI updates
         event_queue = self._get_event_queue(kernel_context)
-        
+
         # First, emit a "starting search" event if we have a queue
         if event_queue:
             try:
@@ -148,19 +148,19 @@ class RagPlugin:
                                     })
                                 except Exception as e:
                                     logger.warning(f"[RAG] Failed to emit summary event: {e}")
-                            
+
                             # Format the response for the user
                             response_parts = [
                                 f"Here's what I found for query '{query}' (relevance threshold: {relevance_threshold}):"
                             ]
-                            
+
                             # Process each chunk and emit individual chunk events
                             for i, c in enumerate(chunks, 1):
                                 doc_text = c.get("text", "").strip()
                                 doc_id = c.get("document_id", "unknown")
                                 doc_name = c.get("document_name", doc_id)
                                 score = c.get("score", 0)
-                                
+
                                 # Emit individual chunk event for the UI
                                 if event_queue:
                                     try:
@@ -176,13 +176,13 @@ class RagPlugin:
                                         })
                                     except Exception as e:
                                         logger.warning(f"[RAG] Failed to emit chunk event: {e}")
-                                
+
                                 # Format percentage for display
                                 score_percentage = f"{int(score * 100)}%"
                                 response_parts.append(
                                     f"\n{i}. (Doc: {doc_name}, relevance: {score_percentage})\n{doc_text}"
                                 )
-                            
+
                             response_parts.append(
                                 f"\nFound {total_chunks_found} relevant passages total from {document_count} documents."
                             )
@@ -265,14 +265,14 @@ class RagPlugin:
 
         try:
             event_queue = self._get_event_queue(kernel_context)
-            
+
             async with aiohttp.ClientSession() as session:
                 endpoint = f"{self.rag_api_url}/rag/documents?conversation_id={actual_conversation_id}"
                 async with session.get(endpoint) as response:
                     if response.status == 200:
                         result = await response.json()
                         docs = result.get("documents", [])
-                        
+
                         # Emit document list event
                         if event_queue:
                             await event_queue.put({
@@ -282,10 +282,10 @@ class RagPlugin:
                                     "document_list": docs
                                 }
                             })
-                        
+
                         if not docs:
                             return "No documents found. Please upload documents first."
-                        
+
                         msg = ["Here are the documents available:\n"]
                         for i, doc in enumerate(docs, 1):
                             fn = doc.get("filename", "Untitled")

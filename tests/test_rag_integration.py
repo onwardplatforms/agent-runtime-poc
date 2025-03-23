@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Add the parent directory to the path so we can import the runtime module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from runtime.agent_runtime import AgentRuntime
 from runtime.features.rag import RagPlugin
+
+# Add the parent directory to the path so we can import the runtime module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 class TestRagIntegration:
@@ -79,19 +79,19 @@ class TestRagIntegration:
             ],
             "total_chunks_found": 2
         }
-        
+
         # Patch the aiohttp.ClientSession.post method
         with patch('aiohttp.ClientSession.post') as mock_post:
             # Set up the mock to return our response
             mock_post.return_value.__aenter__.return_value = mock_aiohttp_response
-            
+
             # Call the function and get the result
             result = await rag_plugin.search_documents(
                 query="test query",
                 conversation_id="test-conversation",
                 top_k=2
             )
-            
+
             # Verify the result contains the expected information
             assert "Here's what I found for query 'test query'" in result
             assert "This is a test chunk." in result
@@ -100,7 +100,7 @@ class TestRagIntegration:
             assert "Doc: doc2" in result
             assert "relevance: 95%" in result
             assert "relevance: 85%" in result
-            
+
             # Verify the API was called correctly
             mock_post.assert_called_once()
             args, kwargs = mock_post.call_args
@@ -118,21 +118,21 @@ class TestRagIntegration:
             "chunks": [],
             "total_chunks_found": 0
         }
-        
+
         # Patch the aiohttp.ClientSession.post method
         with patch('aiohttp.ClientSession.post') as mock_post:
             # Set up the mock to return our response
             mock_post.return_value.__aenter__.return_value = mock_aiohttp_response
-            
+
             # Call the function and get the result
             result = await rag_plugin.search_documents(
                 query="test query",
                 conversation_id="test-conversation"
             )
-            
+
             # Verify the result indicates no relevant information was found
             assert "No relevant information found" in result
-            
+
             # Verify the API was called correctly
             mock_post.assert_called_once()
             args, kwargs = mock_post.call_args
@@ -145,12 +145,12 @@ class TestRagIntegration:
         """Test that the runtime correctly registers the RAG plugin."""
         # Mock the RagPlugin class
         mock_rag_plugin = MagicMock()
-        
+
         # Patch the import and plugin creation
         with patch('runtime.features.rag.RagPlugin', return_value=mock_rag_plugin):
             # Directly test the add_plugin method with our mock
             runtime.kernel.add_plugin(mock_rag_plugin, plugin_name="rag")
-            
+
             # Verify that the kernel's add_plugin method was called with the RAG plugin
             runtime.kernel.add_plugin.assert_called_with(mock_rag_plugin, plugin_name="rag")
 
@@ -161,31 +161,32 @@ class TestRagIntegration:
         mock_chat_service = MagicMock()
         mock_result = MagicMock()
         mock_result.content = "Here's information from the documents: Onward Platforms is a company."
-        
+
         # Set up function calls to indicate RAG was used
         mock_function_call = MagicMock()
         mock_function_call.name = "rag-search_documents"
         mock_function_call.arguments = json.dumps({"query": "What is Onward Platforms?"})
-        
+
         # Add the function call to the result
         mock_result.function_calls = [mock_function_call]
-        
+
         # Set up the chat service to return our mock result
         mock_chat_service.get_chat_message_contents = AsyncMock(return_value=mock_result)
         mock_kernel.get_service.return_value = mock_chat_service
-        
+
         # Process a query that should trigger RAG
         response = await runtime.process_query(
-            "What is Onward Platforms?", 
+            "What is Onward Platforms?",
             "test-conversation"
         )
-        
+
         # Check that the response includes the RAG information
         assert "Here's information from the documents" in response["content"]
         assert "Onward Platforms" in response["content"]
-        
+
         # Check that the agents_used list includes "rag"
         assert "rag" in response["agents_used"]
 
+
 if __name__ == "__main__":
-    pytest.main(["-xvs", __file__]) 
+    pytest.main(["-xvs", __file__])

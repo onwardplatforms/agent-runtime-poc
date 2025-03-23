@@ -1,15 +1,13 @@
-from ..models import EmbeddingModel
-
-# Import providers
+# Import local provider by default
 from .local import SentenceTransformerEmbedding
 
-# Only import OpenAI provider if we have the dependency
-try:
-    from .openai import OpenAIEmbedding
-    _has_openai = True
-except ImportError:
-    _has_openai = False
-
+# Define the default exports
 __all__ = ['SentenceTransformerEmbedding']
-if _has_openai:
+
+# Conditionally import and export OpenAI provider
+try:
+    # Only import and expose if available
+    from .openai import OpenAIEmbedding  # noqa: F401
     __all__.append('OpenAIEmbedding')
+except ImportError:
+    pass

@@ -17,39 +17,39 @@ _embedding_model: Optional[EmbeddingModel] = None
 async def get_storage() -> BaseStorage:
     """
     Get a configured storage instance.
-    
+
     Returns:
         A BaseStorage implementation.
     """
     global _storage
-    
+
     if _storage is None:
         _storage = FilesystemStorage()
         await _storage.initialize()
-        
+
     return _storage
 
 
 async def get_embedding_model_instance() -> EmbeddingModel:
     """
     Get a configured embedding model based on settings.
-    
+
     Returns:
         An EmbeddingModel implementation.
     """
     global _embedding_model
-    
+
     if _embedding_model is None:
         _embedding_model = get_embedding_model()
         await _embedding_model.initialize()
-        
+
     return _embedding_model
 
 
 def get_text_chunker() -> TextChunker:
     """
     Get a configured text chunker.
-    
+
     Returns:
         A TextChunker.
     """

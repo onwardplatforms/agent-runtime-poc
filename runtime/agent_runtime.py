@@ -27,10 +27,12 @@ logger = logging.getLogger("agent_runtime")
 DEBUG = os.environ.get("AGENT_RUNTIME_DEBUG", "true").lower() == "true"
 print(f"Agent Runtime DEBUG mode: {DEBUG}, env var: {os.environ.get('AGENT_RUNTIME_DEBUG', 'not set')}")
 
+
 def debug_print(message: str):
     """Print debug messages only if DEBUG is True."""
     if DEBUG:
         print(message)
+
 
 # Track the last called agent
 last_called_agent = None
@@ -40,7 +42,7 @@ last_agent_response = None  # Track the agent response for streaming
 # SINGLE SOURCE FOR THE SYSTEM PROMPT
 # ──────────────────────────────────────────────────────────────────────────────
 BASE_SYSTEM_PROMPT = """\
-You are an intelligent orchestrator that coordinates between human users and specialized agent plugins (including a Retrieval-Augmented Generation plugin named 'rag_plugin'). 
+You are an intelligent orchestrator that coordinates between human users and specialized agent plugins (including a Retrieval-Augmented Generation plugin named 'rag_plugin').
 
 Your primary responsibilities are:
 1. **COORDINATION**: Analyze user queries to decide if they require specialized plugin calls.
@@ -61,6 +63,7 @@ Remember:
 """
 
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class AgentPlugin:
     """A plugin that represents an agent in the Semantic Kernel."""
@@ -260,7 +263,7 @@ class AgentRuntime:
         try:
             with open(config_path, "r") as f:
                 config = json.load(f)
-                
+
             self.config = config
             if "settings" in config:
                 settings = config["settings"]
@@ -327,13 +330,13 @@ class AgentRuntime:
                     rag_config = self.config.get("settings", {}).get("data", {}).get("rag", {})
 
                 rag_plugin = RagPlugin(rag_config)
-                
+
                 # Store the event queue attribute directly on the plugin instance
                 # This will be passed to runtime.features.rag when event_queue is created
                 if hasattr(self, 'event_queue'):
                     rag_plugin._event_queue = self.event_queue
                     logger.info("Set event_queue on RAG plugin instance.")
-                
+
                 plugin_name = "rag_plugin"
 
                 self.kernel.add_plugin(rag_plugin, plugin_name=plugin_name)
@@ -415,7 +418,7 @@ class AgentRuntime:
         debug_print("Using Semantic Kernel for function calling")
         try:
             result = await chat_service.get_chat_message_contents(
-                chat_history=chat_history, 
+                chat_history=chat_history,
                 settings=settings
             )
         except Exception as e:
@@ -488,7 +491,7 @@ class AgentRuntime:
         # Set event queue on agent plugins
         for agent in self.agents.values():
             agent._event_queue = self.event_queue
-            
+
         # Also set event queue on RAG plugin if available
         if hasattr(self, 'rag_plugin') and self.rag_plugin:
             self.rag_plugin._event_queue = self.event_queue
@@ -523,11 +526,11 @@ class AgentRuntime:
         # Clean up by removing event queue references
         for agent in self.agents.values():
             agent._event_queue = None
-            
+
         # Also clean up RAG plugin reference
         if hasattr(self, 'rag_plugin') and self.rag_plugin:
             self.rag_plugin._event_queue = None
-            
+
         self._query_processed = True
         debug_print(f"DEBUG: Stream processing complete in {time.time() - start_time:.2f}s")
 

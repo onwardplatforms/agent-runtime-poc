@@ -12,23 +12,23 @@ logger = logging.getLogger("ragapi.embedding")
 
 class EmbeddingModel(ABC):
     """Abstract base class for embedding models."""
-    
+
     @abstractmethod
     async def initialize(self) -> None:
         """Initialize the embedding model."""
-    
+
     @abstractmethod
     async def get_embeddings(self, texts: List[str]) -> List[np.ndarray]:
         """
         Generate embeddings for a list of texts.
-        
+
         Args:
             texts: List of texts to embed
-            
+
         Returns:
             List of embeddings as numpy arrays
         """
-    
+
     @property
     @abstractmethod
     def embedding_dim(self) -> int:
@@ -38,12 +38,12 @@ class EmbeddingModel(ABC):
 def get_embedding_model() -> EmbeddingModel:
     """
     Get the configured embedding model based on settings.
-    
+
     Returns:
         An initialized embedding model
     """
     embedding_provider = os.environ.get("RAG_EMBEDDING_PROVIDER", "local").lower()
-    
+
     if embedding_provider == "openai":
         # Use OpenAI embeddings if specified
         from .providers.openai import OpenAIEmbedding

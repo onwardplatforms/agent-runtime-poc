@@ -11,7 +11,7 @@ class TextSegment(BaseModel):
     text: str
     segment_type: str = "paragraph"  # paragraph, heading, list, etc.
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     def __len__(self) -> int:
         """Return the length of the text segment."""
         return len(self.text)
@@ -24,11 +24,11 @@ class DocumentChunk(BaseModel):
     text: str
     document_id: str
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     def __len__(self) -> int:
         """Return the length of the chunk text."""
         return len(self.text)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert the chunk to a dictionary."""
         return {
@@ -36,7 +36,7 @@ class DocumentChunk(BaseModel):
             "document_id": self.document_id,
             "metadata": self.metadata
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DocumentChunk":
         """Create a DocumentChunk from a dictionary."""
@@ -44,4 +44,4 @@ class DocumentChunk(BaseModel):
             text=data["text"],
             document_id=data["document_id"],
             metadata=data.get("metadata", {})
-        ) 
+        )

@@ -38,7 +38,7 @@ class DocumentMetadata(BaseModel):
     last_updated: Optional[datetime] = None
     error: Optional[Dict[str, Any]] = None
     processing_time: Optional[float] = None
-    
+
     model_config = ConfigDict(
         extra="allow"  # Allow extra fields in metadata
     )
@@ -59,7 +59,7 @@ class DocumentStatusResponse(BaseModel):
     conversation_id: Optional[str] = None
     status: DocumentStatus
     metadata: DocumentMetadata
-    
+
 
 class ChunkInfo(BaseModel):
     """Information about a text chunk."""

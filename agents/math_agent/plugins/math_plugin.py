@@ -73,10 +73,10 @@ class MathPlugin:
             input = float(input)
         if isinstance(amount, str):
             amount = float(amount)
-        
+
         if amount == 0:
             raise ValueError("Cannot divide by zero.")
-        
+
         return input / amount
 
     @kernel_function(name="SquareRoot", description="Calculates the square root of a number.")
@@ -88,10 +88,10 @@ class MathPlugin:
         print(f"ƒ(x) calling square_root({input})")
         if isinstance(input, str):
             input = float(input)
-        
+
         if input < 0:
             raise ValueError("Cannot calculate square root of a negative number.")
-        
+
         import math
         return math.sqrt(input)
 
@@ -107,8 +107,8 @@ class MathPlugin:
             input = float(input)
         if isinstance(exponent, str):
             exponent = float(exponent)
-        
-        return input ** exponent 
+
+        return input ** exponent
 
     @kernel_function(name="Log", description="Calculates the logarithm of a number with an optional base (defaults to natural log).")
     def log(
@@ -122,17 +122,17 @@ class MathPlugin:
             input = float(input)
         if isinstance(base, str):
             base = float(base)
-        
+
         if input <= 0:
             raise ValueError("Cannot calculate logarithm of a non-positive number.")
         if base <= 0 or base == 1:
             raise ValueError("Logarithm base must be positive and not equal to 1.")
-        
+
         if base == math.e:
             return math.log(input)  # Natural logarithm
         else:
-            return math.log(input, base)  # Logarithm with custom base 
-        
+            return math.log(input, base)  # Logarithm with custom base
+
     @kernel_function(name="Modulo", description="Finds the remainder of division of one number by another.")
     def modulo(
         self,
@@ -144,7 +144,7 @@ class MathPlugin:
         if amount == 0:
             raise ValueError("Cannot modulo by zero.")
         return input % amount
-    
+
     @kernel_function(name="ModularInverse", description="Finds the modular inverse of a number modulo another number.")
     def modular_inverse(
         self,
@@ -156,7 +156,7 @@ class MathPlugin:
 
         # Ensure input is within modulo range
         input = input % modulus
-        
+
         # Brute force search for modular inverse
         for x in range(1, modulus):
             if (input * x) % modulus == 1:

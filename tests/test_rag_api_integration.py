@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from runtime.api import app
+
 # Add the parent directory to the path so we can import the API module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from runtime.api import app
 
 
 class TestRagApiIntegration:
@@ -62,13 +62,13 @@ class TestRagApiIntegration:
         # This test should be skipped for now since we're testing the runtime API,
         # and the /rag/documents endpoint is actually accessed via the proxy API
         pytest.skip("This test is for a proxy API endpoint, not a direct runtime API endpoint")
-        
+
     def test_query_with_rag_plugin(self, client, mock_runtime):
         """Test that the /runtime/query endpoint correctly uses the RAG plugin."""
         # This test is failing because it seems the endpoint is returning a streaming response
         # even though stream=False is specified in the request
         pytest.skip("This test needs to be redesigned to handle the streaming response format")
-        
+
     def test_streaming_query_with_rag_plugin(self, client, mock_runtime):
         """Test that the streaming query endpoint correctly uses the RAG plugin."""
         # This test will likely also fail due to the same streaming response format issues
@@ -82,4 +82,4 @@ class TestRagApiIntegration:
 
 
 if __name__ == "__main__":
-    pytest.main(["-xvs", __file__]) 
+    pytest.main(["-xvs", __file__])

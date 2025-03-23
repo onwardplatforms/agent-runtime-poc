@@ -35,6 +35,8 @@ app.add_middleware(
 )
 
 # Pydantic models for request/response
+
+
 class Query(BaseModel):
     query: str
     user_id: str = "user"
@@ -90,7 +92,7 @@ async def get_runtime():
         _runtime_instance = AgentRuntime()
         # Short delay to allow kernel initialization
         await asyncio.sleep(1)
-    
+
     return _runtime_instance
 
 
@@ -259,7 +261,7 @@ async def list_agents(runtime: AgentRuntime = Depends(get_runtime)):
     try:
         agent_plugins = runtime.get_all_agents()
         agents = []
-        
+
         for agent_id, plugin in agent_plugins.items():
             agents.append({
                 "id": plugin.id,
@@ -269,7 +271,7 @@ async def list_agents(runtime: AgentRuntime = Depends(get_runtime)):
                 "conversation_starters": plugin.conversation_starters,
                 "endpoint": plugin.endpoint
             })
-            
+
         return {"agents": agents}
     except Exception as e:
         logger.error(f"Error listing agents: {e}")
@@ -315,4 +317,4 @@ async def create_conversation(runtime: AgentRuntime = Depends(get_runtime)):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=5002) 
+    uvicorn.run(app, host="0.0.0.0", port=5002)
