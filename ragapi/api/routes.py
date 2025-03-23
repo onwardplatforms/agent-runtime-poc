@@ -505,23 +505,42 @@ async def query_documents(
             filters=query_request.filters
         )
         
-        # Convert to response model
+        # Convert to response model and filter by relevance threshold
         chunk_infos = []
+        total_chunks = 0
+        
         for chunk in chunks:
+            total_chunks += 1
             score = chunk.metadata.get("score", 0.0) if chunk.metadata else 0.0
+            
+            # Skip chunks with score below threshold
+            if score < query_request.relevance_threshold:
+                continue
+            
+            # Get document name from metadata if available
+            document_name = None
+            if chunk.metadata and "filename" in chunk.metadata:
+                document_name = chunk.metadata["filename"]
             
             chunk_infos.append(ChunkInfo(
                 chunk_id=chunk.chunk_id,
                 document_id=chunk.document_id,
+                document_name=document_name,
                 text=chunk.text,
                 metadata=chunk.metadata,
                 score=score
             ))
             
+        # Log filtering information
+        filtered_chunks = total_chunks - len(chunk_infos)
+        if filtered_chunks > 0:
+            logger.info(f"Filtered out {filtered_chunks} chunks below relevance threshold {query_request.relevance_threshold}")
+            
         return QueryResponse(
             query=query_request.query,
             chunks=chunk_infos,
-            total_chunks_found=len(chunk_infos)
+            total_chunks_found=total_chunks,
+            document_count=len(set(c.document_id for c in chunks))
         )
         
     except Exception as e:

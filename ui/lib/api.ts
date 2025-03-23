@@ -37,6 +37,10 @@ export type StreamChunk = {
         total_chunks?: number;     // Total number of chunks found
         document_count?: number;   // Total number of documents searched
         error?: string;            // Error message if retrieval failed
+        filtered_chunks?: number;  // Number of chunks filtered out by relevance threshold
+        relevance_threshold?: number; // The relevance threshold used for filtering
+        is_loading?: boolean;      // Whether the RAG system is still retrieving results
+        query?: string;            // The original search query
     };
     response?: string;
     conversation_id?: string;
@@ -97,7 +101,7 @@ export type DocumentListResponse = {
     error?: string;
 };
 
-const API_BASE_URL = 'http://localhost:5003';
+const API_BASE_URL = 'http://localhost:5001';
 
 // Check if the API is available
 export async function checkApiAvailability(): Promise<boolean> {
@@ -294,7 +298,8 @@ export async function testApiConnection(): Promise<{ success: boolean; message: 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        const response = await fetch(`${API_BASE_URL}/api/agents`, {
+        // Use the root endpoint instead of /api/agents for the health check
+        const response = await fetch(`${API_BASE_URL}/`, {
             method: 'GET',
             signal: controller.signal,
             headers: {
@@ -314,13 +319,13 @@ export async function testApiConnection(): Promise<{ success: boolean; message: 
         } else {
             return {
                 success: false,
-                message: `API responded with status: ${response.status} ${response.statusText}`
+                message: `API returned status: ${response.status} ${response.statusText}`
             };
         }
     } catch (error) {
         return {
             success: false,
-            message: `Error connecting to API: ${error instanceof Error ? error.message : String(error)}`
+            message: error instanceof Error ? error.message : 'Unknown error'
         };
     }
 }
@@ -345,7 +350,7 @@ export async function uploadFiles(files: File[], conversationId?: string): Promi
         // Add each file to the form data
         for (const file of files) {
             console.log(`Adding file to FormData: ${file.name} (${file.size} bytes)`);
-            formData.append('files', file);
+            formData.append('file', file);
         }
 
         // Add conversation ID if provided

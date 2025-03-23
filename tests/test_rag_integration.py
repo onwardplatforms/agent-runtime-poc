@@ -37,7 +37,7 @@ class TestRagIntegration:
     def rag_plugin(self):
         """Create a RagPlugin instance with test configuration."""
         config = {
-            "rag_api_url": "http://localhost:5005"
+            "rag_api_url": "http://localhost:5003"
         }
         return RagPlugin(config)
 
@@ -52,7 +52,7 @@ class TestRagIntegration:
     @pytest.mark.asyncio
     async def test_rag_plugin_initialization(self, rag_plugin):
         """Test that the RagPlugin initializes correctly."""
-        assert rag_plugin.rag_api_url == "http://localhost:5005"
+        assert rag_plugin.rag_api_url == "http://localhost:5003"
         assert isinstance(rag_plugin.config, dict)
 
     @pytest.mark.asyncio
@@ -93,16 +93,18 @@ class TestRagIntegration:
             )
             
             # Verify the result contains the expected information
-            assert "Here's what I found in the documents" in result
-            assert "test.txt" in result
+            assert "Here's what I found for query 'test query'" in result
             assert "This is a test chunk." in result
-            assert "test2.txt" in result
             assert "This is another test chunk." in result
+            assert "Doc: doc1" in result
+            assert "Doc: doc2" in result
+            assert "relevance: 95%" in result
+            assert "relevance: 85%" in result
             
             # Verify the API was called correctly
             mock_post.assert_called_once()
             args, kwargs = mock_post.call_args
-            assert "http://localhost:5005/rag/query" in args[0]
+            assert "http://localhost:5003/rag/query" in args[0]
             assert kwargs["json"]["query"] == "test query"
             assert kwargs["json"]["top_k"] == 2
             assert kwargs["json"]["conversation_id"] == "test-conversation"
@@ -117,19 +119,10 @@ class TestRagIntegration:
             "total_chunks_found": 0
         }
         
-        # Set up the mock for checking documents
-        mock_doc_response = MagicMock()
-        mock_doc_response.status = 200
-        mock_doc_response.json = AsyncMock(return_value={
-            "documents": [{"document_id": "doc1", "filename": "test.txt"}]
-        })
-        
-        # Patch the aiohttp.ClientSession.post and get methods
-        with patch('aiohttp.ClientSession.post') as mock_post, \
-             patch('aiohttp.ClientSession.get') as mock_get:
-            # Set up the mocks to return our responses
+        # Patch the aiohttp.ClientSession.post method
+        with patch('aiohttp.ClientSession.post') as mock_post:
+            # Set up the mock to return our response
             mock_post.return_value.__aenter__.return_value = mock_aiohttp_response
-            mock_get.return_value.__aenter__.return_value = mock_doc_response
             
             # Call the function and get the result
             result = await rag_plugin.search_documents(
@@ -142,7 +135,10 @@ class TestRagIntegration:
             
             # Verify the API was called correctly
             mock_post.assert_called_once()
-            mock_get.assert_called_once()
+            args, kwargs = mock_post.call_args
+            assert "http://localhost:5003/rag/query" in args[0]
+            assert kwargs["json"]["query"] == "test query"
+            assert kwargs["json"]["conversation_id"] == "test-conversation"
 
     @pytest.mark.asyncio
     async def test_runtime_registers_rag_plugin(self, runtime):

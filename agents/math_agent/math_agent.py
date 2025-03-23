@@ -350,6 +350,6 @@ if __name__ == "__main__":
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
 
-    app.run(host="0.0.0.0", port=5004)
+    app.run(host="0.0.0.0", port=5100)
 
 

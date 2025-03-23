@@ -20,7 +20,7 @@
                 "hello_in_different_languages"
             ],
             "conversation_starters": [],
-            "endpoint": "http://localhost:5001/api/message"
+            "endpoint": "http://localhost:5103/api/message"
         },
         {
             "id": "goodbye-agent",
@@ -31,7 +31,7 @@
                 "goodbye_in_different_languages"
             ],
             "conversation_starters": [],
-            "endpoint": "http://localhost:5002/api/message"
+            "endpoint": "http://localhost:5101/api/message"
         },
         {
             "id": "math-agent",
@@ -42,7 +42,7 @@
                 "Emma deposits $1,000 in a savings account that earns 5% annual interest, compounded yearly. How much money will she have after 3 years?",
                 "A scientist has two solutions: one that is 30% salt and another that is 50% salt. If she wants to mix them to create 1 liter of a 40% salt solution, how much of each solution should she use?"
             ],
-            "endpoint": "http://localhost:5004/api/message"
+            "endpoint": "http://localhost:5100/api/message"
         }
     ]
 }

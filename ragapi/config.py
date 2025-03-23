@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     
     # Server settings
     host: str = "0.0.0.0"
-    port: int = 5005  # Choosing 5005 to avoid conflicts with other services
+    port: int = 5003  # Updated to 5003 to match the new port scheme
     debug: bool = False
     
     # Storage paths
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Chunking settings
     chunk_size: int = 512
     chunk_overlap: int = 50
-    use_semantic_chunking: bool = False  # Whether to use the semantic chunking strategy
+    use_semantic_chunking: bool = True  # Enable semantic chunking by default
     
     # Processing settings
     embedding_batch_size: int = 10  # Number of chunks to process in one batch

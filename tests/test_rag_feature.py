@@ -52,24 +52,32 @@ class TestRagFeature(unittest.TestCase):
             "total_chunks_found": 2
         })
         mock_post.return_value.__aenter__.return_value = mock_response
-
+        
         # Call the function and get the result
         result = asyncio.run(self.plugin.search_documents(
             query="test query",
             conversation_id="test-conversation",
             top_k=2
         ))
-
-        # Verify the result
-        self.assertIn("Here's what I found in the documents for the query", result)
-        self.assertIn("This is a test chunk", result)
-        self.assertIn("This is another test chunk", result)
-        self.assertIn("Found 2 relevant passages", result)
+        
+        # Verify the result contains key information, regardless of exact formatting
+        self.assertIn("test query", result)  # Query text should be included
+        self.assertIn("This is a test chunk", result)  # First chunk text
+        self.assertIn("This is another test chunk", result)  # Second chunk text
+        self.assertIn("doc1", result)  # First document ID
+        self.assertIn("doc2", result)  # Second document ID
+        self.assertIn("95%", result)  # First relevance score
+        self.assertIn("85%", result)  # Second relevance score
+        self.assertIn("Found 2 relevant passages", result)  # Summary line
         
         # Verify the API was called correctly
         mock_post.assert_called_once()
         call_args = mock_post.call_args[0][0]
-        self.assertEqual(call_args, "http://localhost:5005/rag/query")
+        self.assertEqual(call_args, "http://localhost:5003/rag/query")
+        
+        # Verify the conversation_id was passed correctly
+        payload = mock_post.call_args[1]['json']
+        self.assertEqual(payload.get('conversation_id'), "test-conversation")
 
     @patch('aiohttp.ClientSession.post')
     @patch('aiohttp.ClientSession.get')
@@ -92,15 +100,20 @@ class TestRagFeature(unittest.TestCase):
             "documents": []
         })
         mock_get.return_value.__aenter__.return_value = mock_doc_response
-
+        
         # Call the function and get the result
         result = asyncio.run(self.plugin.search_documents(
             query="test query",
             conversation_id="test-conversation"
         ))
-
-        # Verify the result
-        self.assertIn("No documents have been uploaded yet", result)
+        
+        # Verify the result - the exact message format has changed but should indicate no results
+        self.assertIn("No relevant information found", result)
+        
+        # Verify the API was called correctly
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args[0][0]
+        self.assertEqual(call_args, "http://localhost:5003/rag/query")
 
     @patch('aiohttp.ClientSession.post')
     def test_search_documents_with_kernel_context(self, mock_post):
@@ -121,24 +134,33 @@ class TestRagFeature(unittest.TestCase):
             "total_chunks_found": 1
         })
         mock_post.return_value.__aenter__.return_value = mock_response
-
+        
         # Create a mock kernel context with conversation_id
+        # Note: Setting conversation_id directly, not inside extension_data
         class MockContext:
             def __init__(self):
                 self.variables = {
-                    'extension_data': '{"conversation_id": "context-conversation-id"}'
+                    'conversation_id': 'context-conversation-id'
                 }
-
+        
         # Call the function with kernel context but no conversation_id
         result = asyncio.run(self.plugin.search_documents(
             query="test query",
-            conversation_id=None,
+            conversation_id="current_conversation",
             kernel_context=MockContext()
         ))
-
-        # Verify the result
-        self.assertIn("Here's what I found in the documents for the query", result)
-        self.assertIn("This is a test chunk", result)
+        
+        # Verify the result contains key information, regardless of exact formatting
+        self.assertIn("test query", result)  # Query text should be included
+        self.assertIn("This is a test chunk", result)  # The chunk text
+        self.assertIn("doc1", result)  # Document ID
+        self.assertIn("95%", result)  # Relevance score
+        self.assertIn("Found 1 relevant passages", result)  # Summary line
+        
+        # Verify the API was called correctly
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args[0][0]
+        self.assertEqual(call_args, "http://localhost:5003/rag/query")
         
         # Verify the API was called with the conversation_id from the context
         payload = mock_post.call_args[1]['json']

@@ -50,14 +50,14 @@ Your primary responsibilities are:
 5. **CONSOLIDATION**: Integrate plugin responses into a coherent final answer, focusing on correctness and clarity.
 
 **IMPORTANT**:
-- Use function calls only when needed (e.g., if the user’s query might require factual data from uploaded documents, consider calling the 'rag_plugin.search_documents' function).
+- Use function calls only when needed (e.g., if the user's query might require factual data from uploaded documents, consider calling the 'rag_plugin.search_documents' function).
 - Always pass the correct 'conversation_id' when calling any function, especially for RAG.
 - If no plugin function is relevant, simply reply directly as yourself.
 - In final user responses, keep it concise and helpful.
-- Summaries or explanations of the plugin’s internal reasoning should not be revealed unless explicitly asked.
+- Summaries or explanations of the plugin's internal reasoning should not be revealed unless explicitly asked.
 
 Remember:
-- The plugin system may contain a “rag_plugin” for retrieval-augmented generation; call it if you need factual references from documents. If no relevant information is found or the user’s query doesn’t require it, proceed with your own response.
+- The plugin system may contain a "rag_plugin" for retrieval-augmented generation; call it if you need factual references from documents. If no relevant information is found or the user's query doesn't require it, proceed with your own response.
 """
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -327,6 +327,13 @@ class AgentRuntime:
                     rag_config = self.config.get("settings", {}).get("data", {}).get("rag", {})
 
                 rag_plugin = RagPlugin(rag_config)
+                
+                # Store the event queue attribute directly on the plugin instance
+                # This will be passed to runtime.features.rag when event_queue is created
+                if hasattr(self, 'event_queue'):
+                    rag_plugin._event_queue = self.event_queue
+                    logger.info("Set event_queue on RAG plugin instance.")
+                
                 plugin_name = "rag_plugin"
 
                 self.kernel.add_plugin(rag_plugin, plugin_name=plugin_name)
@@ -348,6 +355,8 @@ class AgentRuntime:
                     except Exception as direct_err:
                         logger.warning(f"Failed to register search_documents directly: {direct_err}")
 
+                # Store the RAG plugin instance for direct updating
+                self.rag_plugin = rag_plugin
                 logger.info("RAG plugin registration complete.")
             except ImportError as e:
                 logger.warning(f"Could not import RAG plugin: {e}")
@@ -476,8 +485,14 @@ class AgentRuntime:
         self.event_queue = asyncio.Queue()
         self._query_processed = False
 
+        # Set event queue on agent plugins
         for agent in self.agents.values():
             agent._event_queue = self.event_queue
+            
+        # Also set event queue on RAG plugin if available
+        if hasattr(self, 'rag_plugin') and self.rag_plugin:
+            self.rag_plugin._event_queue = self.event_queue
+            debug_print("Set event queue on RAG plugin for streaming")
 
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
@@ -505,8 +520,14 @@ class AgentRuntime:
                         yield result
                     break
 
+        # Clean up by removing event queue references
         for agent in self.agents.values():
             agent._event_queue = None
+            
+        # Also clean up RAG plugin reference
+        if hasattr(self, 'rag_plugin') and self.rag_plugin:
+            self.rag_plugin._event_queue = None
+            
         self._query_processed = True
         debug_print(f"DEBUG: Stream processing complete in {time.time() - start_time:.2f}s")
 
@@ -535,11 +556,25 @@ class AgentRuntime:
         settings = PromptExecutionSettings()
         settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
 
+        # Add the event_queue and conversation_id to the extension data for use by plugins
         extension_data = {
             "function_call_guidance": "only_when_necessary",
-            "conversation_id": conversation_id
+            "conversation_id": conversation_id,
+            "event_queue": self.event_queue
         }
         settings.extension_data = extension_data
+
+        # Create kernel context variables to ensure plugins have access to them
+        kernel_context = None
+        if hasattr(self.kernel, "create_new_context"):
+            try:
+                kernel_context = self.kernel.create_new_context()
+                kernel_context.variables.set("event_queue", self.event_queue)
+                kernel_context.variables.set("conversation_id", conversation_id)
+                # Log that we've set the context variables
+                debug_print("Created kernel context with event_queue and conversation_id")
+            except Exception as ctx_err:
+                logger.warning(f"Failed to create kernel context: {ctx_err}")
 
         debug_print("Using Semantic Kernel for function calling (streaming)")
 

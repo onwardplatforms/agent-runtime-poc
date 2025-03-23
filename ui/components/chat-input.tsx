@@ -12,12 +12,20 @@ type UploadedFile = {
     path?: string;
 };
 
+type PendingFile = {
+    id: string;
+    file: File;
+    status: 'uploading' | 'error';
+    errorMessage?: string;
+};
+
 type ChatInputProps = {
     onSend: (message: string) => void;
     onStop?: () => void;
     onFileUpload?: (files: File[]) => void;
     onFileRemove?: (fileId: string) => void;
     uploadedFiles?: UploadedFile[];
+    pendingFiles?: PendingFile[];
     isProcessing?: boolean;
     disabled?: boolean;
     placeholder?: string;
@@ -29,6 +37,7 @@ export function ChatInput({
     onFileUpload,
     onFileRemove,
     uploadedFiles = [],
+    pendingFiles = [],
     isProcessing = false,
     disabled = false,
     placeholder = "Message..."
@@ -36,6 +45,12 @@ export function ChatInput({
     const [input, setInput] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileDisplayRef = useRef<HTMLDivElement>(null);
+    const [localPendingFiles, setLocalPendingFiles] = useState<PendingFile[]>([]);
+
+    // Update local pending files whenever props change
+    useEffect(() => {
+        setLocalPendingFiles(pendingFiles);
+    }, [pendingFiles]);
 
     // Log uploads for debugging
     useEffect(() => {
@@ -101,7 +116,13 @@ export function ChatInput({
 
     const handleFileSelect = (files: File[]) => {
         if (onFileUpload) {
-            onFileUpload(files);
+            // Filter out any files that match those that were locally removed
+            const currentPendingNames = new Set(localPendingFiles.map(pf => pf.file.name));
+            const filesToUpload = files.filter(file => !currentPendingNames.has(file.name));
+
+            if (filesToUpload.length > 0) {
+                onFileUpload(filesToUpload);
+            }
         }
     };
 
@@ -121,18 +142,61 @@ export function ChatInput({
     return (
         <form onSubmit={handleSubmit} className="relative">
             {/* File display area */}
-            {uploadedFiles.length > 0 && (
+            {(uploadedFiles.length > 0 || localPendingFiles.length > 0) && (
                 <div
                     ref={fileDisplayRef}
-                    className="w-full bg-[#40414f] px-4 pt-3 rounded-t-3xl border-b border-gray-700"
+                    className="w-full bg-[#40414f] px-4 pt-3 rounded-t-3xl border-b border-gray-700/30"
                 >
-                    <div className="flex flex-wrap gap-2 mb-2">
+                    <div className="flex flex-wrap gap-2 mb-3">
+                        {/* Pending files with loading or error status */}
+                        {localPendingFiles.map(pendingFile => (
+                            <div
+                                key={pendingFile.id}
+                                className={`${pendingFile.status === 'error'
+                                    ? 'bg-red-900/40 border border-red-700/40'
+                                    : 'bg-[#4a4b59]'} 
+                                    text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm`}
+                            >
+                                {pendingFile.status === 'uploading' ? (
+                                    <div className="h-4 w-4 text-white animate-spin">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    </div>
+                                ) : (
+                                    <FileIcon className="h-4 w-4 text-blue-400" />
+                                )}
+                                <span className="truncate max-w-[150px]">{pendingFile.file.name}</span>
+                                <span className="text-gray-400 text-xs">
+                                    {pendingFile.status === 'uploading' ? (
+                                        null
+                                    ) : (
+                                        <span className="text-red-400">{pendingFile.errorMessage || 'error'}</span>
+                                    )}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        // Just remove from pending state, no need to call API
+                                        setLocalPendingFiles(prev => prev.filter(pf => pf.id !== pendingFile.id));
+                                    }}
+                                    className="text-gray-400 hover:text-white transition-colors"
+                                >
+                                    <XIcon className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ))}
+
+                        {/* Successfully uploaded files */}
                         {uploadedFiles.map(file => (
                             <div
                                 key={file.id}
                                 className="bg-[#4a4b59] text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
                             >
-                                <FileIcon className="h-4 w-4 text-blue-400" />
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4 text-emerald-400">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                </svg>
                                 <span className="truncate max-w-[150px]">{file.name}</span>
                                 <span className="text-gray-400 text-xs">({formatFileSize(file.size)})</span>
                                 <button
@@ -156,7 +220,7 @@ export function ChatInput({
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 disabled={disabled}
-                className={`w-full min-h-[120px] max-h-[240px] resize-none border-0 bg-[#40414f] px-6 py-5 text-white text-base placeholder:text-gray-400 focus:outline-none ${uploadedFiles.length > 0 ? 'rounded-b-3xl' : 'rounded-3xl'}`}
+                className={`w-full min-h-[120px] max-h-[240px] resize-none border-0 bg-[#40414f] px-6 py-5 text-white text-base placeholder:text-gray-400 focus:outline-none ${(uploadedFiles.length > 0 || localPendingFiles.length > 0) ? 'rounded-b-3xl rounded-t-none' : 'rounded-3xl'}`}
                 rows={1}
                 style={{ height: "80px" }}
             />

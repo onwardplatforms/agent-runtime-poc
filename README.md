@@ -255,4 +255,18 @@ This consolidated approach ensures:
 - Consistent file management across the system
 - Proper embedding generation for all uploaded files
 
+## Port Structure
+
+The system uses the following port structure:
+
+- **3000**: Frontend UI
+- **5001**: API Proxy Layer
+- **5002**: Runtime API
+- **5003**: RAG Pipeline API
+- **5100+**: Individual Agents
+  - **5100**: Math Agent
+  - **5101**: Goodbye Agent
+  - **5103**: Hello Agent
+  - **5110+**: Reserved for future agents
+
 ## Getting Started

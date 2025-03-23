@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { ChatInput } from "@/components/chat-input";
-import { AgentCallMessage, AgentResponseMessage, Message, RAGRetrievalMessage } from "@/components/message";
+import { AgentCallMessage, AgentResponseMessage, Message, RAGRetrievalMessage, RAGGroupedResultsMessage, KnowledgeQueryMessage } from "@/components/message";
 import { StreamChunk, streamQuery, uploadFiles, UploadedFile as ApiUploadedFile, deleteFile } from "@/lib/api";
 import { Loader2, ArrowDown, Zap } from "lucide-react";
 import { LoadingDots } from "@/components/loading-dots";
@@ -62,6 +62,13 @@ type RagRetrieval = {
     summary?: string;
 };
 
+// Add a new type for knowledge queries
+type KnowledgeQuery = {
+    id: string;
+    query: string;
+    userMessageId: string;
+};
+
 // Define a ref type that exposes the reset method
 export type ChatRef = {
     reset: () => void;
@@ -72,6 +79,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     const [agentCalls, setAgentCalls] = useState<AgentCall[]>([]);
     const [agentResponses, setAgentResponses] = useState<AgentResponse[]>([]);
     const [ragRetrievals, setRagRetrievals] = useState<RagRetrieval[]>([]);
+    const [knowledgeQueries, setKnowledgeQueries] = useState<KnowledgeQuery[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingMessageIds, setProcessingMessageIds] = useState<Set<string>>(new Set());
     const [conversationId, setConversationId] = useState<string>("");
@@ -88,6 +96,12 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
     const [isRetrying, setIsRetrying] = useState(false);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+    const [pendingFiles, setPendingFiles] = useState<{
+        id: string;
+        file: File;
+        status: 'uploading' | 'error';
+        errorMessage?: string;
+    }[]>([]);
 
     // Expose the reset method to the parent component through the ref
     useImperativeHandle(ref, () => ({
@@ -97,10 +111,12 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             setAgentCalls([]);
             setAgentResponses([]);
             setRagRetrievals([]);
+            setKnowledgeQueries([]);
             setIsProcessing(false);
             setProcessingMessageIds(new Set());
             setCurrentMessageId(null);
             setUploadedFiles([]);
+            setPendingFiles([]);
 
             // Generate a new conversation ID
             const newConversationId = uuidv4();
@@ -120,7 +136,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             setIsLoadingAgents(true);
             try {
                 console.log("Fetching agents from API...");
-                const response = await fetch('http://localhost:5003/api/agents', {
+                const response = await fetch('http://localhost:5001/api/agents', {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -341,8 +357,8 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             // Add system message to indicate the request was stopped
             const stoppedMessage: ChatMessage = {
                 id: uuidv4(),
-                content: "Request stopped by user.",
-                role: "system",
+                content: "I've stopped processing your request.",
+                role: "assistant",
                 timestamp: new Date().toISOString(),
             };
             setMessages(prev => [...prev, stoppedMessage]);
@@ -408,7 +424,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                     stream: true,
                     verbose: true, // Enable verbose mode to get execution trace
                 },
-                (chunk: StreamChunk) => {
+                async (chunk: StreamChunk) => {
                     console.log("Received chunk:", JSON.stringify(chunk, null, 2));
 
                     // Handle errors
@@ -538,9 +554,27 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                         console.log("Received RAG retrieval:", chunk.rag_retrieval);
 
                         const retrievalId = uuidv4();
+                        const ragRetrieval = chunk.rag_retrieval;
+
+                        // Check if this is a "Searching documents..." message to capture the query
+                        if (ragRetrieval.summary === `Searching documents for '${content}'...` ||
+                            (ragRetrieval.summary && ragRetrieval.summary.includes("Searching documents"))) {
+                            const searchQuery = content;
+                            const queryId = uuidv4();
+
+                            // Add the knowledge query to state
+                            setKnowledgeQueries(prev => [
+                                ...prev,
+                                {
+                                    id: queryId,
+                                    query: searchQuery,
+                                    userMessageId
+                                }
+                            ]);
+                        }
 
                         // Handle different types of RAG retrieval events
-                        if (chunk.rag_retrieval.error) {
+                        if (ragRetrieval.error) {
                             // Error event
                             setRagRetrievals((prev) => [
                                 ...prev,
@@ -548,31 +582,31 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                                     id: retrievalId,
                                     userMessageId,
                                     isError: true,
-                                    errorMessage: chunk.rag_retrieval.error
+                                    errorMessage: ragRetrieval.error
                                 }
                             ]);
-                        } else if (chunk.rag_retrieval.summary) {
+                        } else if (ragRetrieval.summary) {
                             // Summary event
                             setRagRetrievals((prev) => [
                                 ...prev,
                                 {
                                     id: retrievalId,
                                     userMessageId,
-                                    summary: chunk.rag_retrieval.summary
+                                    summary: ragRetrieval.summary
                                 }
                             ]);
-                        } else if (chunk.rag_retrieval.document_name) {
+                        } else if (ragRetrieval.document_name) {
                             // Document chunk retrieval event
                             setRagRetrievals((prev) => [
                                 ...prev,
                                 {
                                     id: retrievalId,
                                     userMessageId,
-                                    documentName: chunk.rag_retrieval.document_name,
-                                    documentId: chunk.rag_retrieval.document_id,
-                                    relevanceScore: chunk.rag_retrieval.relevance_score,
-                                    content: chunk.rag_retrieval.content,
-                                    fullContent: chunk.rag_retrieval.full_content
+                                    documentName: ragRetrieval.document_name,
+                                    documentId: ragRetrieval.document_id,
+                                    relevanceScore: ragRetrieval.relevance_score,
+                                    content: ragRetrieval.content,
+                                    fullContent: ragRetrieval.full_content
                                 }
                             ]);
                         }
@@ -651,7 +685,8 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             messages: messages.length,
             agentCalls: agentCalls.length,
             agentResponses: agentResponses.length,
-            ragRetrievals: ragRetrievals.length
+            ragRetrievals: ragRetrievals.length,
+            knowledgeQueries: knowledgeQueries.length
         });
 
         const result = [];
@@ -680,28 +715,75 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                     retrieval => retrieval.userMessageId === message.id
                 );
 
+                // Find knowledge queries for this message
+                const queriesForThisMessage = knowledgeQueries.filter(
+                    query => query.userMessageId === message.id
+                );
+
                 // Find agent calls and responses for this specific user message
                 const callsForThisMessage = agentCalls.filter(call => call.userMessageId === message.id);
                 const responsesForThisMessage = agentResponses.filter(resp => resp.userMessageId === message.id);
 
+                // First show knowledge queries if any
+                if (queriesForThisMessage.length > 0) {
+                    // Just show the first query (usually there's only one)
+                    const latestQuery = queriesForThisMessage[queriesForThisMessage.length - 1];
+                    result.push(
+                        <KnowledgeQueryMessage
+                            key={latestQuery.id}
+                            query={latestQuery.query}
+                        />
+                    );
+                }
+
                 if (retrievalsForThisMessage.length > 0) {
                     console.log(`Displaying ${retrievalsForThisMessage.length} RAG retrievals for message:`, message.content);
 
-                    // Display RAG retrievals first
-                    retrievalsForThisMessage.forEach(retrieval => {
+                    // Group retrievals by type (summary, error, document chunks)
+                    const errorRetrievals = retrievalsForThisMessage.filter(r => r.isError);
+                    const summaryRetrievals = retrievalsForThisMessage.filter(r => r.summary && !r.isError);
+                    const documentRetrievals = retrievalsForThisMessage.filter(r => !r.isError && !r.summary);
+
+                    // If there are errors, display them first
+                    if (errorRetrievals.length > 0) {
+                        const errorRetrieval = errorRetrievals[errorRetrievals.length - 1]; // Show the most recent error
                         result.push(
-                            <RAGRetrievalMessage
-                                key={retrieval.id}
-                                documentName={retrieval.documentName}
-                                relevanceScore={retrieval.relevanceScore}
-                                content={retrieval.content}
-                                fullContent={retrieval.fullContent}
-                                isError={retrieval.isError}
-                                errorMessage={retrieval.errorMessage}
-                                summary={retrieval.summary}
+                            <RAGGroupedResultsMessage
+                                key={`errors-${message.id}`}
+                                results={[]}
+                                isError={true}
+                                errorMessage={errorRetrieval.errorMessage}
                             />
                         );
-                    });
+                    }
+
+                    // Display the latest summary with all document chunks
+                    if (summaryRetrievals.length > 0 || documentRetrievals.length > 0) {
+                        const latestSummary = summaryRetrievals.length > 0
+                            ? summaryRetrievals[summaryRetrievals.length - 1].summary
+                            : undefined;
+
+                        result.push(
+                            <RAGGroupedResultsMessage
+                                key={`results-${message.id}`}
+                                results={documentRetrievals}
+                                summary={latestSummary}
+                            />
+                        );
+                    }
+
+                    // If there's only a "Searching..." message and no results yet
+                    if (retrievalsForThisMessage.length === 1 &&
+                        summaryRetrievals.length === 1 &&
+                        summaryRetrievals[0].summary === "Searching documents...") {
+                        result.push(
+                            <RAGGroupedResultsMessage
+                                key={`searching-${message.id}`}
+                                results={[]}
+                                summary="Searching documents..."
+                            />
+                        );
+                    }
                 }
 
                 if (callsForThisMessage.length > 0 || responsesForThisMessage.length > 0) {
@@ -782,7 +864,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         if ((isAtBottom || isUserMessageRecent) && messagesContainerRef.current) {
             scrollToBottom();
         }
-    }, [messages, agentCalls, agentResponses, isAtBottom, lastUserMessageTimestamp]);
+    }, [messages, agentCalls, agentResponses, ragRetrievals, knowledgeQueries, isAtBottom, lastUserMessageTimestamp]);
 
     // Log container dimensions on mount and when messages change
     useEffect(() => {
@@ -808,6 +890,15 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
         console.log("Files selected for upload:", files);
         console.log("Current conversation ID:", conversationId);
 
+        // Immediately add files to pending state with temporary IDs
+        const pendingFilesWithIds = files.map(file => ({
+            id: `pending-${uuidv4()}`,
+            file,
+            status: 'uploading' as const
+        }));
+
+        setPendingFiles(prev => [...prev, ...pendingFilesWithIds]);
+
         try {
             console.log("Starting upload to API...");
             // Upload files using the runtime API endpoint with conversation ID
@@ -829,9 +920,24 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                 console.log("Adding files to state:", newFiles);
                 setUploadedFiles((prevFiles) => [...prevFiles, ...newFiles]);
 
-                // No need to separately upload to RAG API - runtime API handles this
+                // Remove pending files from the pending state
+                setPendingFiles(prev => prev.filter(pendingFile =>
+                    !files.some(file => file.name === pendingFile.file.name)
+                ));
 
-                // No system message for successful uploads
+                // Add a system message for successful uploads
+                const fileNames = newFiles.map(file => file.name).join(", ");
+                const documentMessage: ChatMessage = {
+                    id: uuidv4(),
+                    role: "assistant",
+                    content: `I have uploaded "${fileNames}" to my knowledge base.`,
+                    timestamp: new Date().toISOString(),
+                };
+
+                setMessages((prev) => [...prev, documentMessage]);
+                scrollToBottom();
+
+                // No need to separately upload to RAG API - runtime API handles this
             } else {
                 console.warn("No files were uploaded in the response");
                 throw new Error("No files were uploaded");
@@ -840,11 +946,24 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
             console.error("Error uploading files:", error);
             console.error("Error details:", error instanceof Error ? error.stack : "No stack trace");
 
+            // Update pending files to show error status
+            setPendingFiles(prev =>
+                prev.map(pendingFile =>
+                    files.some(file => file.name === pendingFile.file.name)
+                        ? {
+                            ...pendingFile,
+                            status: 'error',
+                            errorMessage: error instanceof Error ? error.message : String(error)
+                        }
+                        : pendingFile
+                )
+            );
+
             // Only show system message for errors
             const systemMessage: ChatMessage = {
                 id: uuidv4(),
-                role: "system",
-                content: `Error uploading files: ${error instanceof Error ? error.message : String(error)}`,
+                role: "assistant",
+                content: `I couldn't upload the files: ${error instanceof Error ? error.message : String(error)}`,
                 timestamp: new Date().toISOString(),
             };
 
@@ -855,7 +974,14 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
 
     // Handle file removal
     const handleFileRemove = async (fileId: string) => {
-        // First, find the file in our state
+        // Check if this is a pending file (starts with "pending-")
+        if (fileId.startsWith("pending-")) {
+            // Just remove from pending state, no need to call API
+            setPendingFiles(prev => prev.filter(file => file.id !== fileId));
+            return;
+        }
+
+        // Otherwise handle as a regular uploaded file
         const fileToRemove = uploadedFiles.find(file => file.id === fileId);
         if (!fileToRemove) {
             console.warn(`File with ID ${fileId} not found in state`);
@@ -1019,6 +1145,7 @@ export const Chat = forwardRef<ChatRef, {}>((props, ref) => {
                             onFileUpload={handleFileUpload}
                             onFileRemove={handleFileRemove}
                             uploadedFiles={uploadedFiles}
+                            pendingFiles={pendingFiles}
                             isProcessing={isProcessing}
                             disabled={!isInitialized}
                             placeholder={

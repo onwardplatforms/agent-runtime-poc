@@ -1,376 +1,376 @@
-.PHONY: start-hello start-goodbye start-math start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake isort autopep8 format check-format ui-deps ui-dev ui-build ui-start start-full start-rag install-rag-deps
+.PHONY: start-hello start-goodbye start-math start-all stop help start-runtime install-deps cli interactive runtime-cli check-agents restart kill-port clean-ports check-ports setup-venv test test-cov demo lint flake8 mypy autoflake isort autopep8 format check-format ui-deps ui-dev ui-build ui-start start-backend start-frontend install-rag-deps
 
 # Default target
 all: start-all
 
-# Set up virtual environment and install dependencies
+# =======================================
+# Setup and Installation
+# =======================================
+
+# Complete first-time setup for development (both backend and frontend)
+setup: check-dependencies setup-venv install-deps install-rag-deps ui-deps
+	@echo "✅ Complete setup finished. You can now start the system with 'make start-all'"
+
+# Check if required dependencies are installed
+check-dependencies:
+	@echo "Checking required dependencies..."
+	@if ! command -v python3 &> /dev/null; then echo "❌ Python 3 is not installed"; exit 1; fi
+	@if ! command -v pip3 &> /dev/null; then echo "❌ pip3 is not installed"; exit 1; fi
+	@if ! command -v node &> /dev/null; then echo "❌ Node.js is not installed"; exit 1; fi
+	@if ! command -v npm &> /dev/null; then echo "❌ npm is not installed"; exit 1; fi
+	@echo "✅ All required dependencies are installed"
+
+# Set up a Python virtual environment
 setup-venv:
-	@echo "Setting up virtual environment..."
-	python -m venv .venv
-	@echo "Virtual environment created at .venv/"
-	@echo "To activate it, run: source .venv/bin/activate"
-	@echo "Installing dependencies into virtual environment..."
-	. .venv/bin/activate && pip install -r requirements.txt
-	@echo "To check the Semantic Kernel version:"
-	@echo "source .venv/bin/activate && pip show semantic-kernel"
+	@echo "Setting up Python virtual environment..."
+	@python3 -m venv .venv || (echo "❌ Failed to create virtual environment"; exit 1)
+	@echo "✅ Virtual environment created at .venv"
+	@echo "To activate: source .venv/bin/activate"
 
-# Install dependencies for the runtime
+# Install Python dependencies
 install-deps:
-	@echo "Installing Semantic Kernel and other dependencies..."
-	@if [ -d ".venv" ]; then \
-		echo "Using virtual environment..."; \
-		. .venv/bin/activate && pip install -r requirements.txt; \
-	else \
-		echo "No virtual environment found, installing globally (consider running 'make setup-venv' first)..."; \
-		pip install -r requirements.txt; \
-	fi
+	@echo "Installing Python dependencies..."
+	@pip3 install -r requirements.txt || (echo "❌ Failed to install dependencies"; exit 1)
+	@echo "✅ Python dependencies installed"
 
-# Install dependencies for the RAG API
+# Install RAG API dependencies
 install-rag-deps:
 	@echo "Installing RAG API dependencies..."
-	@if [ -d ".venv" ]; then \
-		echo "Using virtual environment..."; \
-		. .venv/bin/activate && pip install -r ragapi/requirements.txt; \
-	else \
-		echo "No virtual environment found, installing globally (consider running 'make setup-venv' first)..."; \
-		pip install -r ragapi/requirements.txt; \
-	fi
+	@pip3 install -r ragapi/requirements.txt || (echo "❌ Failed to install RAG dependencies"; exit 1)
+	@echo "✅ RAG API dependencies installed"
 
 # Install UI dependencies
 ui-deps:
 	@echo "Installing UI dependencies..."
-	cd ui && npm install
+	@cd ui && npm install || (echo "❌ Failed to install UI dependencies"; exit 1)
+	@echo "✅ UI dependencies installed"
 
-# Start the UI in development mode
+# =======================================
+# Development UI Commands
+# =======================================
+
+# Start UI in development mode
 ui-dev:
-	@echo "Starting UI in development mode on http://localhost:3000..."
-	cd ui && npm run dev
+	@echo "Starting UI in development mode..."
+	@cd ui && npm run dev
 
 # Build the UI for production
 ui-build:
 	@echo "Building UI for production..."
-	cd ui && npm run build
+	@cd ui && npm run build
 
 # Start the built UI
 ui-start:
-	@echo "Starting built UI on http://localhost:3000..."
-	cd ui && npm run start
+	@echo "Starting built UI..."
+	@cd ui && npm run start
 
-# Start all components including UI
-start-full: start-all ui-dev
-	@echo "All components including UI are running!"
+# =======================================
+# Service Management
+# =======================================
 
-# Check if particular ports are in use
-check-ports:
-	@echo "Checking if ports are in use..."
-	@if lsof -i:5003 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5003 (Runtime) is in use"; \
-	else \
-		echo "✅ Port 5003 (Runtime) is available"; \
-	fi
-	@if lsof -i:5001 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5001 (Hello Agent) is in use"; \
-	else \
-		echo "✅ Port 5001 (Hello Agent) is available"; \
-	fi
-	@if lsof -i:5002 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5002 (Goodbye Agent) is in use"; \
-	else \
-		echo "✅ Port 5002 (Goodbye Agent) is available"; \
-	fi
-	@if lsof -i:5004 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5004 (Math Agent) is in use"; \
-	else \
-		echo "✅ Port 5004 (Math Agent) is available"; \
-	fi
-	@if lsof -i:5005 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5005 (RAG API) is in use"; \
-	else \
-		echo "✅ Port 5005 (RAG API) is available"; \
-	fi
-	@if lsof -i:3000 > /dev/null 2>&1; then \
-		echo "⚠️  Port 3000 (UI) is in use"; \
-	else \
-		echo "✅ Port 3000 (UI) is available"; \
-	fi
+# Start everything (backend and frontend)
+start-all: clean-ports start-backend start-frontend
+	@echo "✅ All services started (backend + frontend)"
 
-# Kill processes using specific ports
-kill-port:
-	@echo "Killing processes using ports 5001, 5002, 5003, 5004, 5005, and 3000..."
-	-lsof -ti:5001 | xargs kill -9 2>/dev/null || true
-	-lsof -ti:5002 | xargs kill -9 2>/dev/null || true
-	-lsof -ti:5003 | xargs kill -9 2>/dev/null || true
-	-lsof -ti:5004 | xargs kill -9 2>/dev/null || true
-	-lsof -ti:5005 | xargs kill -9 2>/dev/null || true
-	-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-	@echo "Ports should now be free"
+# Start only backend services
+start-backend: start-hello start-goodbye start-math start-runtime start-proxy start-rag
+	@echo "✅ Backend services started"
 
-# Clean up all ports used by our services
-clean-ports: kill-port
-	@echo "Ports have been cleaned, waiting for sockets to close..."
-	@sleep 2
-	@$(MAKE) check-ports
+# Start only frontend
+start-frontend:
+	@echo "Starting UI in development mode..."
+	@cd ui && npm run dev &
+	@echo "✅ Frontend UI started on http://localhost:3000"
 
-# Check if agents are running
-check-agents:
-	@echo "Checking if agents are already running..."
-	@if pgrep -f "python hello_agent.py" > /dev/null; then \
-		echo "Hello Agent is already running."; \
-	else \
-		echo "Hello Agent is not running, starting it..."; \
-		cd agents/hello_agent && python hello_agent.py & \
-		echo "Hello Agent started on http://localhost:5001"; \
-	fi
-	@if pgrep -f "dotnet run" | grep -q goodbye_agent; then \
-		echo "Goodbye Agent is already running."; \
-	else \
-		echo "Goodbye Agent is not running, starting it..."; \
-		cd agents/goodbye_agent && dotnet run & \
-		echo "Goodbye Agent started on http://localhost:5002"; \
-	fi
+# =======================================
+# Individual Service Control
+# =======================================
 
-# Start the Hello Agent (Python)
+# Start Hello Agent
 start-hello:
 	@echo "Starting Hello Agent..."
-	@if lsof -i:5001 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5001 is already in use. Killing existing process..."; \
-		lsof -ti:5001 | xargs kill -9 2>/dev/null || true; \
+	@if lsof -i:5103 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5103 is already in use. Killing existing process..."; \
+		lsof -ti:5103 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	cd agents/hello_agent && python hello_agent.py &
-	@echo "Hello Agent started on http://localhost:5001"
+	@cd agents/hello_agent && PYTHONUNBUFFERED=1 python hello_agent.py &
+	@echo "✅ Hello Agent started on http://localhost:5103"
 
-# Start the Goodbye Agent (.NET)
+# Start Goodbye Agent
 start-goodbye:
 	@echo "Starting Goodbye Agent..."
+	@if lsof -i:5101 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5101 is already in use. Killing existing process..."; \
+		lsof -ti:5101 | xargs kill -9 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	@cd agents/goodbye_agent && dotnet run --urls http://localhost:5101 &
+	@echo "✅ Goodbye Agent started on http://localhost:5101"
+
+# Start Math Agent
+start-math:
+	@echo "Starting Math Agent..."
+	@if lsof -i:5100 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5100 is already in use. Killing existing process..."; \
+		lsof -ti:5100 | xargs kill -9 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	@cd agents/math_agent && PYTHONUNBUFFERED=1 python math_agent.py &
+	@echo "✅ Math Agent started on http://localhost:5100"
+
+# Start the runtime API
+start-runtime:
+	@echo "Starting Runtime API..."
 	@if lsof -i:5002 > /dev/null 2>&1; then \
 		echo "⚠️  Port 5002 is already in use. Killing existing process..."; \
 		lsof -ti:5002 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	cd agents/goodbye_agent && dotnet run &
-	@echo "Goodbye Agent started on http://localhost:5002"
+	PYTHONUNBUFFERED=1 python -m uvicorn runtime.api:app --host 0.0.0.0 --port 5002 &
+	@echo "✅ Runtime API started on http://localhost:5002"
 
-# Start the Math Agent (Python)
-start-math:
-	@echo "Starting Math Agent..."
-	@if lsof -i:5004 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5004 is already in use. Killing existing process..."; \
-		lsof -ti:5004 | xargs kill -9 2>/dev/null || true; \
+# Start the proxy API
+start-proxy:
+	@echo "Starting API Proxy..."
+	@if lsof -i:5001 > /dev/null 2>&1; then \
+		echo "⚠️  Port 5001 is already in use. Killing existing process..."; \
+		lsof -ti:5001 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	cd agents/math_agent && python math_agent.py &
-	@echo "Math Agent started on http://localhost:5004"
+	PYTHONUNBUFFERED=1 python -m uvicorn api.proxy_api:app --host 0.0.0.0 --port 5001 &
+	@echo "✅ API Proxy started on http://localhost:5001"
 
-# Start the Agent Runtime
-start-runtime:
-	@echo "Starting Agent Runtime..."
+# Start the RAG API
+start-rag:
+	@echo "Starting RAG API..."
 	@if lsof -i:5003 > /dev/null 2>&1; then \
 		echo "⚠️  Port 5003 is already in use. Killing existing process..."; \
 		lsof -ti:5003 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	PYTHONUNBUFFERED=1 python -m uvicorn api.runtime_api:app --host 0.0.0.0 --port 5003 &
-	@echo "Runtime started on http://localhost:5003"
+	PYTHONUNBUFFERED=1 python -m uvicorn ragapi.main:app --host 0.0.0.0 --port 5003 &
+	@echo "✅ RAG API started on http://localhost:5003"
 
-# Start the RAG API
-start-rag:
-	@echo "Starting RAG API..."
-	@if lsof -i:5005 > /dev/null 2>&1; then \
-		echo "⚠️  Port 5005 is already in use. Killing existing process..."; \
-		lsof -ti:5005 | xargs kill -9 2>/dev/null || true; \
-		sleep 1; \
-	fi
-	PYTHONUNBUFFERED=1 python -m uvicorn ragapi.main:app --host 0.0.0.0 --port 5005 &
-	@echo "RAG API started on http://localhost:5005"
+# =======================================
+# Interactive Interfaces
+# =======================================
 
-# Start all backend components
-start-all: start-hello start-goodbye start-math start-runtime start-rag
-	@echo "All backend components are running!"
-
-# Start all components in the background and launch CLI (main command for users)
+# Start all backend components and launch CLI
 interactive: clean-ports
 	@echo "Starting all backend services..."
-	@$(MAKE) start-all
-	@echo "Starting CLI interface..."
-	./cli.py interactive
+	@$(MAKE) start-backend
+	@echo "Starting CLI..."
+	@cd cli && python client.py
 
-# Start all components including the UI (web-based interface)
+# Start all backend components and launch web UI
 interactive-web: clean-ports
-	@echo "Starting all backend services..."
+	@echo "Starting all services..."
 	@$(MAKE) start-all
-	@echo "Starting UI..."
-	$(MAKE) ui-dev
+
+# =======================================
+# Service Management
+# =======================================
 
 # Restart all components
 restart: stop clean-ports
 	@echo "Restarting all components..."
-	@sleep 2
 	@$(MAKE) start-all
+	@echo "✅ All services restarted"
 
-# Stop all components - more thoroughly
+# Stop all running components
 stop:
-	@echo "Stopping all processes..."
-	@echo "Stopping NextJS UI app..."
-	-pkill -f "next dev" 2>/dev/null || true
-	-pkill -f "next start" 2>/dev/null || true
-	
-	@echo "Stopping Flask apps (Hello Agent, Math Agent, and Runtime)..."
-	-pkill -f "python hello_agent.py" 2>/dev/null || true
-	-pkill -f "python math_agent.py" 2>/dev/null || true
-	-pkill -f "runtime_api.py" 2>/dev/null || true
-	-pkill -f "api.py" 2>/dev/null || true
-	
-	@echo "Stopping .NET apps (Goodbye Agent)..."
-	-pkill -f "dotnet run" 2>/dev/null || true
-	-pkill -f "GoodbyeAgent" 2>/dev/null || true
-	
-	@echo "Stopping RAG API..."
-	-pkill -f "uvicorn ragapi.main:app" 2>/dev/null || true
-	
-	@echo "Cleaning up any remaining processes on our ports..."
-	@$(MAKE) kill-port
-	
-	@echo "All components stopped"
+	@echo "Stopping all components..."
+	@pkill -f "uvicorn .*.api:app" 2>/dev/null || true
+	@pkill -f "python .*.py" 2>/dev/null || true
+	@pkill -f "dotnet .*.dll" 2>/dev/null || true
+	@lsof -ti:3000 | xargs kill -9 2>/dev/null || true  # UI port
+	@lsof -ti:5001 | xargs kill -9 2>/dev/null || true  # API Proxy
+	@lsof -ti:5002 | xargs kill -9 2>/dev/null || true  # Runtime API
+	@lsof -ti:5003 | xargs kill -9 2>/dev/null || true  # RAG API
+	@lsof -ti:5100 | xargs kill -9 2>/dev/null || true  # Math Agent
+	@lsof -ti:5101 | xargs kill -9 2>/dev/null || true  # Goodbye Agent
+	@lsof -ti:5103 | xargs kill -9 2>/dev/null || true  # Hello Agent
+	@echo "✅ All components stopped"
 
-# Check status of all components - more thoroughly
+# Check status of all components
 status:
 	@echo "Checking status of all components..."
-	@echo "Checking by process name:"
-	@if pgrep -f "python hello_agent.py" > /dev/null; then \
-		echo "Hello Agent (process): RUNNING"; \
-	else \
-		echo "Hello Agent (process): STOPPED"; \
+	@echo ""
+	@echo "UI (Port 3000):"
+	@if lsof -i:3000 > /dev/null 2>&1; then echo "  ✅ Running"; else echo "  ❌ Not running"; fi
+	@echo ""
+	@echo "API Proxy (Port 5001):"
+	@if lsof -i:5001 > /dev/null 2>&1; then echo "  ✅ Running"; else echo "  ❌ Not running"; fi
+	@echo ""
+	@echo "Runtime API (Port 5002):"
+	@if lsof -i:5002 > /dev/null 2>&1; then echo "  ✅ Running"; else echo "  ❌ Not running"; fi
+	@echo ""
+	@echo "RAG API (Port 5003):"
+	@if lsof -i:5003 > /dev/null 2>&1; then echo "  ✅ Running"; else echo "  ❌ Not running"; fi
+	@echo ""
+	@echo "Agents:"
+	@echo "  Math Agent (Port 5100):"
+	@if lsof -i:5100 > /dev/null 2>&1; then echo "    ✅ Running"; else echo "    ❌ Not running"; fi
+	@echo "  Goodbye Agent (Port 5101):"
+	@if lsof -i:5101 > /dev/null 2>&1; then echo "    ✅ Running"; else echo "    ❌ Not running"; fi
+	@echo "  Hello Agent (Port 5103):"
+	@if lsof -i:5103 > /dev/null 2>&1; then echo "    ✅ Running"; else echo "    ❌ Not running"; fi
+
+# =======================================
+# Port Management
+# =======================================
+
+# Check if ports are available
+check-ports:
+	@echo "Checking port availability..."
+	@for port in 3000 5001 5002 5003 5100 5101 5103; do \
+		if lsof -i:$$port > /dev/null 2>&1; then \
+			echo "⚠️  Port $$port is in use."; \
+			PORTS_IN_USE=1; \
+		else \
+			echo "✅ Port $$port is available."; \
+		fi; \
+	done; \
+	if [ "$$PORTS_IN_USE" = "1" ]; then \
+		echo "Some ports are in use. Run 'make clean-ports' to free them."; \
+		exit 1; \
 	fi
-	@if pgrep -f "dotnet run" | grep -q goodbye_agent; then \
-		echo "Goodbye Agent (process): RUNNING"; \
-	else \
-		echo "Goodbye Agent (process): STOPPED"; \
-	fi
-	@if pgrep -f "python runtime_api.py" > /dev/null; then \
-		echo "Runtime (process): RUNNING"; \
-	else \
-		echo "Runtime (process): STOPPED"; \
-	fi
-	@if pgrep -f "uvicorn ragapi.main:app" > /dev/null; then \
-		echo "RAG API (process): RUNNING"; \
-	else \
-		echo "RAG API (process): STOPPED"; \
-	fi
-	
-	@echo "\nChecking by port availability:"
-	@if lsof -i:5001 > /dev/null 2>&1; then \
-		echo "Port 5001 (Hello Agent): IN USE"; \
-	else \
-		echo "Port 5001 (Hello Agent): AVAILABLE"; \
-	fi
-	@if lsof -i:5002 > /dev/null 2>&1; then \
-		echo "Port 5002 (Goodbye Agent): IN USE"; \
-	else \
-		echo "Port 5002 (Goodbye Agent): AVAILABLE"; \
-	fi
-	@if lsof -i:5003 > /dev/null 2>&1; then \
-		echo "Port 5003 (Runtime): IN USE"; \
-	else \
-		echo "Port 5003 (Runtime): AVAILABLE"; \
-	fi
-	@if lsof -i:5005 > /dev/null 2>&1; then \
-		echo "Port 5005 (RAG API): IN USE"; \
-	else \
-		echo "Port 5005 (RAG API): AVAILABLE"; \
-	fi
+
+# Kill processes using required ports
+kill-port:
+	@echo "Killing processes on required ports..."
+	@for port in 3000 5001 5002 5003 5100 5101 5103; do \
+		if lsof -i:$$port > /dev/null 2>&1; then \
+			echo "Killing process on port $$port"; \
+			lsof -ti:$$port | xargs kill -9 2>/dev/null || true; \
+		fi; \
+	done
+	@echo "✅ All port conflicts resolved"
+
+# Clean up ports and verify they're free
+clean-ports: kill-port
+	@echo "Verifying ports are free..."
+	@for port in 3000 5001 5002 5003 5100 5101 5103; do \
+		if lsof -i:$$port > /dev/null 2>&1; then \
+			echo "⚠️  Failed to free port $$port."; \
+			exit 1; \
+		else \
+			echo "✅ Port $$port is free."; \
+		fi; \
+	done
+	@echo "All ports are free."
+
+# =======================================
+# Demo and Testing
+# =======================================
+
+# Run a quick demonstration
+demo:
+	@echo "Running quick demo of agent capabilities..."
+	@echo "1. Hello Agent: Testing greeting in French..."
+	@curl -s -X POST -H "Content-Type: application/json" \
+		-d '{"messageId":"test-msg-1","conversationId":"test-conv","senderId":"user","recipientId":"hello-agent","content":"Say hello in French"}' \
+		http://localhost:5103/api/message
+	@echo "\n\n2. Goodbye Agent: Testing farewell in Spanish..."
+	@curl -s -X POST -H "Content-Type: application/json" \
+		-d '{"messageId":"test-msg-2","conversationId":"test-conv","senderId":"user","recipientId":"goodbye-agent","content":"Say goodbye in Spanish"}' \
+		http://localhost:5101/api/message
+	@echo "\n\n3. Math Agent: Testing calculation..."
+	@curl -s -X POST -H "Content-Type: application/json" \
+		-d '{"messageId":"test-msg-3","conversationId":"test-conv","senderId":"user","recipientId":"math-agent","content":"What is 42 * 73?"}' \
+		http://localhost:5100/api/message
+	@echo "\n\nDemo complete! All agents are functioning."
+
+# Run tests
+test:
+	pytest -xvs tests/
+
+# Run tests with coverage
+test-cov:
+	pytest --cov=runtime --cov=api --cov=ragapi tests/
+
+# =======================================
+# Code Quality
+# =======================================
+
+# Run all linters
+lint: flake8 mypy
+
+# Run flake8
+flake8:
+	flake8 runtime/ api/ ragapi/ agents/ tests/
+
+# Run mypy
+mypy:
+	mypy runtime/ api/ ragapi/
+
+# Run autoflake
+autoflake:
+	autoflake --remove-all-unused-imports --recursive --remove-unused-variables --in-place --exclude=__init__.py runtime api ragapi agents tests
+
+# Run isort
+isort:
+	isort runtime api ragapi agents tests
+
+# Run autopep8
+autopep8:
+	autopep8 --in-place --recursive runtime api ragapi agents tests
+
+# Check formatting without modifying files
+check-format:
+	@echo "Checking code format without modifying files..."
+	@isort --check-only runtime api ragapi agents tests || (echo "❌ isort check failed"; exit 1)
+	@autopep8 --diff --recursive runtime api ragapi agents tests | grep -q . && (echo "❌ autopep8 check failed"; exit 1) || echo "✅ autopep8 check passed"
+
+# Run all formatters
+format: autoflake isort autopep8
+	@echo "✅ Code formatting complete"
+
+# =======================================
+# Help
+# =======================================
 
 # Help command
 help:
 	@echo "Agent Runtime System Commands:"
-	@echo "  make install-deps    - Install dependencies for the runtime"
-	@echo "  make install-rag-deps - Install dependencies for the RAG API"
-	@echo "  make setup-venv      - Set up a Python virtual environment and install dependencies"
-	@echo "  make start-all       - Start all backend agents, runtime, and RAG API"
-	@echo "  make start-rag       - Start only the RAG API service"
-	@echo "  make interactive     - Start all backend components and launch the CLI interface"
-	@echo "  make restart         - Restart all components (with port checking)"
+	@echo "  make setup           - Complete first-time setup (backend + frontend)"
+	@echo "  make check-dependencies - Verify required tools are installed"
+	@echo "  make start-all       - Start everything (backend + frontend)"
+	@echo "  make start-backend   - Start only backend services"
+	@echo "  make start-frontend  - Start only frontend UI"
+	@echo "  make restart         - Restart all components"
 	@echo "  make stop            - Stop all running components"
+	@echo ""
+	@echo "Individual Service Control:"
+	@echo "  make start-hello     - Start Hello Agent"
+	@echo "  make start-goodbye   - Start Goodbye Agent"
+	@echo "  make start-math      - Start Math Agent"
+	@echo "  make start-runtime   - Start Runtime API"
+	@echo "  make start-proxy     - Start API Proxy"
+	@echo "  make start-rag       - Start RAG API"
 	@echo ""
 	@echo "UI Commands:"
 	@echo "  make ui-deps         - Install UI dependencies"
-	@echo "  make ui-dev          - Start the UI in development mode"
+	@echo "  make ui-dev          - Start the UI in development mode (foreground)"
 	@echo "  make ui-build        - Build the UI for production"
 	@echo "  make ui-start        - Start the built UI"
-	@echo "  make start-full      - Start all backend components and the UI"
-	@echo "  make interactive-web - Start backends and launch the web UI"
 	@echo ""
-	@echo "Utility Commands:"
-	@echo "  make check-ports     - Check if the ports needed are available"
-	@echo "  make kill-port       - Kill processes using our required ports"
+	@echo "Interactive Commands:"
+	@echo "  make interactive     - Start backend components and launch CLI"
+	@echo "  make interactive-web - Start all components (backend + frontend)"
+	@echo ""
+	@echo "Port Management:"
+	@echo "  make check-ports     - Check if required ports are available"
+	@echo "  make kill-port       - Kill processes using required ports"
 	@echo "  make clean-ports     - Kill processes and verify ports are free"
-	@echo "  make cli             - Start the CLI interface only (assumes runtime is running)"
-	@echo "  make status          - Check the status of all components"
-	@echo "  make demo            - Run a quick demonstration of the system's functionality"
+	@echo ""
+	@echo "Testing and Demo:"
+	@echo "  make demo            - Run a quick demo of the system's functionality"
 	@echo "  make test            - Run all tests"
 	@echo "  make test-cov        - Run tests with coverage"
 	@echo ""
-	@echo "Code Quality Commands:"
+	@echo "Code Quality:"
 	@echo "  make lint            - Run all linters (flake8 and mypy)"
-	@echo "  make format          - Run all formatters (autoflake, isort, autopep8)"
-	@echo "  make check-format    - Check code formatting without modifying files (for CI)"
-
-# Run tests
-test:
-	@echo "Running tests..."
-	pytest tests/ -v
-
-# Run tests with coverage
-test-cov:
-	@echo "Running tests with coverage..."
-	pytest tests/ --cov=runtime --cov=api --cov=cli --cov-report=term-missing -v
-
-# Demonstrate the system's functionality
-demo:
-	@echo "Demonstrating Agent Runtime functionality..."
-	@echo "\nTesting Hello Agent..."
-	curl -X POST http://localhost:5001/api/message \
-		-H "Content-Type: application/json" \
-		-d '{"messageId": "demo-msg-1", "conversationId": "demo-conv", "senderId": "demo", "recipientId": "hello-agent", "content": "Say hello in Spanish", "timestamp": "2023-03-10T12:00:00Z", "type": "Text"}' | jq
-	@echo "\nTesting Goodbye Agent..."
-	curl -X POST http://localhost:5002/api/message \
-		-H "Content-Type: application/json" \
-		-d '{"messageId": "demo-msg-2", "conversationId": "demo-conv", "senderId": "demo", "recipientId": "goodbye-agent", "content": "Say goodbye in French", "timestamp": "2023-03-10T12:00:00Z", "type": 0}' | jq
-	@echo "\nTesting Runtime with both agents..."
-	./cli.py --group "hello-agent,goodbye-agent" --query "Say hello in Spanish and say goodbye in French"
-
-# Code Quality Commands
-lint: flake8 mypy
-
-flake8:
-	@echo "Running flake8..."
-	flake8 runtime/ cli/ api/ tests/
-
-mypy:
-	@echo "Running mypy..."
-	mypy runtime/ cli/ api/ tests/
-
-autoflake:
-	@echo "Running autoflake to remove unused imports..."
-	autoflake --in-place --remove-all-unused-imports --remove-unused-variables --recursive runtime/ cli/ api/ tests/
-
-isort:
-	@echo "Running isort to sort imports..."
-	isort runtime/ cli/ api/ tests/
-
-autopep8:
-	@echo "Running autopep8 to fix PEP8 style issues..."
-	autopep8 --in-place --aggressive --aggressive --recursive runtime/ cli/ api/ tests/
-
-check-format:
-	@echo "Checking code formatting without modifying files..."
-	@echo "Checking imports with isort..."
-	isort --check-only runtime/ cli/ api/ tests/
-	@echo "Checking style with autopep8..."
-	autopep8 --exit-code --diff --recursive runtime/ cli/ api/ tests/
-	@echo "Checking unused imports and variables with autoflake..."
-	autoflake --check --remove-all-unused-imports --remove-unused-variables --recursive runtime/ cli/ api/ tests/
-	@echo "Format check complete."
-
-format: autoflake isort autopep8
-	@echo "Code formatting complete." 
+	@echo "  make format          - Run all formatters"
+	@echo "  make check-format    - Check code formatting without modifying files" 

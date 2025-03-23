@@ -64,6 +64,7 @@ class ChunkInfo(BaseModel):
     """Information about a text chunk."""
     chunk_id: str
     document_id: str
+    document_name: Optional[str] = None
     text: str
     metadata: Dict[str, Any]
     score: Optional[float] = None
@@ -75,6 +76,7 @@ class QueryRequest(BaseModel):
     conversation_id: Optional[str] = None
     filters: Optional[Dict[str, Any]] = None
     top_k: int = 5
+    relevance_threshold: float = 0.0
 
 
 class QueryResponse(BaseModel):
@@ -82,3 +84,4 @@ class QueryResponse(BaseModel):
     query: str
     chunks: List[ChunkInfo]
     total_chunks_found: int
+    document_count: int = 0

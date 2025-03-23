@@ -140,6 +140,26 @@ export function AgentCallMessage({ agentId, query }: { agentId: string; query: s
     );
 }
 
+export function KnowledgeQueryMessage({ query }: { query: string }) {
+    return (
+        <div className="py-3">
+            <div className="flex">
+                <div className="max-w-[90%] text-base message-content">
+                    <div className="text-sm font-medium text-gray-400 mb-2">Runtime to knowledge</div>
+                    <div className="text-gray-300">
+                        <ContentRenderer content={query} />
+                    </div>
+                    <div className="mt-2 text-xs text-gray-500">
+                        <span className="opacity-50">
+                            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function AgentResponseMessage({ agentId, response }: { agentId: string; response: string }) {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -247,10 +267,12 @@ export function RAGRetrievalMessage({
                     {/* Header section */}
                     <div className="text-sm font-medium text-emerald-400 mb-1 flex items-center">
                         <span className="mr-1.5">💡</span>
-                        {isError ? "Knowledge Search Error" : summary ? "Knowledge Search" : "Knowledge: " + (documentName || "Document")}
+                        {isError ? "Knowledge Search Error" : summary ? "Knowledge Search" :
+                            <span className="text-emerald-400">Knowledge: {documentName || "Document"}</span>
+                        }
                         {formattedScore && !isError && !summary && (
                             <span className="ml-2 text-xs bg-emerald-400/10 px-2 py-0.5 rounded-full text-emerald-300">
-                                Relevance: {formattedScore}
+                                {formattedScore}
                             </span>
                         )}
                     </div>
@@ -305,6 +327,252 @@ export function RAGRetrievalMessage({
                     )}
 
                     <div className="mt-1 text-xs text-gray-500">
+                        <span className="opacity-50">
+                            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function RAGGroupedResultsMessage({
+    results,
+    summary,
+    isError = false,
+    errorMessage
+}: {
+    results: Array<{
+        id: string;
+        documentName?: string;
+        documentId?: string;
+        relevanceScore?: number;
+        content?: string;
+        fullContent?: string;
+    }>;
+    summary?: string;
+    isError?: boolean;
+    errorMessage?: string;
+}) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // Sort results by relevance score (highest first)
+    const sortedResults = [...results].sort((a, b) => {
+        const scoreA = a.relevanceScore || 0;
+        const scoreB = b.relevanceScore || 0;
+        return scoreB - scoreA;
+    });
+
+    // Count unique documents
+    const uniqueDocuments = new Set(
+        sortedResults
+            .filter(r => r.documentId)
+            .map(r => r.documentId)
+    ).size;
+
+    // Get best result for displaying a relevance badge in collapsed view
+    const bestResult = sortedResults.length > 0 ? sortedResults[0] : null;
+    const bestScore = bestResult?.relevanceScore !== undefined
+        ? Math.round(bestResult.relevanceScore * 100)
+        : undefined;
+
+    // Format the content for display based on expansion state
+    const getDisplayContent = () => {
+        if (isError && errorMessage) {
+            return errorMessage;
+        }
+
+        if (summary === "Searching documents...") {
+            return summary;
+        }
+
+        // Fix the document count in the summary if needed
+        let updatedSummary = summary;
+        if (summary && summary.includes("from 0 documents") && uniqueDocuments > 0) {
+            updatedSummary = summary.replace("0 documents", `${uniqueDocuments} document${uniqueDocuments > 1 ? 's' : ''}`);
+        }
+
+        // No results found or all filtered out
+        if (results.length === 0 && summary !== "Searching documents...") {
+            if (updatedSummary && updatedSummary.includes("Found")) {
+                return `${updatedSummary} (All results filtered by relevance threshold)`;
+            }
+            return "No relevant information found.";
+        }
+
+        // For preview (collapsed state), show summary and maybe a bit of the best result
+        if (!isExpanded) {
+            let content = updatedSummary || "";
+
+            // Add a preview of the best result if available
+            if (sortedResults.length > 0) {
+                const previewText = bestResult?.content || bestResult?.fullContent || "";
+
+                // Create a brief preview (first 100 chars or so)
+                const preview = previewText.length > 100
+                    ? previewText.substring(0, 100) + "..."
+                    : previewText;
+
+                if (content) content += "\n\n";
+                content += preview;
+            }
+
+            return content;
+        }
+
+        // For expanded state, show everything
+        let expandedContent = updatedSummary ? `${updatedSummary}\n\n` : "";
+
+        // Group results by document to avoid repetition
+        const resultsByDocument: Record<string, typeof sortedResults> = {};
+
+        sortedResults.forEach(result => {
+            const docId = result.documentId || "unknown";
+            if (!resultsByDocument[docId]) {
+                resultsByDocument[docId] = [];
+            }
+            resultsByDocument[docId].push(result);
+        });
+
+        // Display results grouped by document
+        Object.entries(resultsByDocument).forEach(([docId, docResults]) => {
+            const docName = docResults[0].documentName || docId;
+            expandedContent += `${docName}\n`;
+
+            docResults.forEach(result => {
+                // Include the relevance score in the text
+                const scoreStr = result.relevanceScore !== undefined
+                    ? ` (${Math.round(result.relevanceScore * 100)}%)`
+                    : '';
+                expandedContent += `${result.fullContent || result.content || ""}${scoreStr}\n\n`;
+            });
+        });
+
+        return expandedContent.trim();
+    };
+
+    // For rendering the expanded view with custom badges
+    const renderExpandedContent = () => {
+        if (isError && errorMessage) {
+            return (
+                <div className="text-gray-200 whitespace-pre-wrap">
+                    {errorMessage}
+                </div>
+            );
+        }
+
+        // Fix the document count in the summary if needed
+        let updatedSummary = summary;
+        if (summary && summary.includes("from 0 documents") && uniqueDocuments > 0) {
+            updatedSummary = summary.replace("0 documents", `${uniqueDocuments} document${uniqueDocuments > 1 ? 's' : ''}`);
+        }
+
+        // If summary indicates we found results but none are displayed, add context about filtering
+        if (updatedSummary && updatedSummary.includes("Found") && sortedResults.length === 0) {
+            updatedSummary += " (All results filtered by relevance threshold)";
+        }
+
+        // Group results by document to avoid repetition
+        const resultsByDocument: Record<string, typeof sortedResults> = {};
+
+        sortedResults.forEach(result => {
+            const docId = result.documentId || "unknown";
+            if (!resultsByDocument[docId]) {
+                resultsByDocument[docId] = [];
+            }
+            resultsByDocument[docId].push(result);
+        });
+
+        return (
+            <div className="text-gray-200">
+                {updatedSummary && <p className="mb-3">{updatedSummary}</p>}
+
+                {Object.entries(resultsByDocument).map(([docId, docResults]) => {
+                    const docName = docResults[0].documentName || docId;
+
+                    return (
+                        <div key={docId} className="mb-4">
+                            <div className="font-semibold text-emerald-400 mb-3">{docName}</div>
+
+                            {docResults.map((result, idx) => {
+                                const score = result.relevanceScore !== undefined
+                                    ? Math.round(result.relevanceScore * 100)
+                                    : undefined;
+
+                                return (
+                                    <div key={`${docId}-${idx}`} className="mb-4 pb-4 border-b border-gray-700/30 last:border-0">
+                                        <div className="flex items-start justify-between">
+                                            <div className="whitespace-pre-wrap text-gray-200 flex-grow mr-3">
+                                                {result.fullContent || result.content || ""}
+                                            </div>
+                                            {score !== undefined && (
+                                                <span className="text-xs bg-emerald-400/10 px-2 py-0.5 rounded-full text-emerald-300 flex-shrink-0 h-fit">
+                                                    {score}%
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    );
+                })}
+
+                {sortedResults.length === 0 && summary !== "Searching documents..." && (
+                    <div className="text-gray-300">No relevant information found.</div>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <div className="py-3">
+            <div className="flex">
+                <div className="max-w-[90%] text-base message-content">
+                    <div className="text-sm font-medium text-emerald-400 mb-2 flex items-center">
+                        <span className="mr-1.5">💡</span>
+                        <span>Knowledge Search</span>
+                        {!isError && bestScore !== undefined && (
+                            <span className="ml-2 text-xs bg-emerald-400/10 px-2 py-0.5 rounded-full text-emerald-300">
+                                {bestScore}%
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Collapsed view with preview */}
+                    {!isExpanded && (
+                        <div className="p-2 -ml-2">
+                            <div className="text-gray-200 whitespace-pre-wrap line-clamp-3">
+                                {getDisplayContent()}
+                            </div>
+                            {!isError && results.length > 0 && (
+                                <button
+                                    onClick={() => setIsExpanded(true)}
+                                    className="text-xs text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1 rounded-full mt-2 transition-colors"
+                                >
+                                    Expand
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Expanded view with full content */}
+                    {isExpanded && (
+                        <div>
+                            <div className="p-2 -ml-2">
+                                {renderExpandedContent()}
+                            </div>
+                            <button
+                                onClick={() => setIsExpanded(false)}
+                                className="text-xs text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 px-3 py-1 rounded-full mt-2 transition-colors"
+                            >
+                                Collapse
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="mt-2 text-xs text-gray-500">
                         <span className="opacity-50">
                             {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>

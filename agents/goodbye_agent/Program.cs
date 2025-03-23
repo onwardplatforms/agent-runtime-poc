@@ -90,7 +90,7 @@ app.MapPost("/api/message", async (HttpContext context, GoodbyeAgent agent) =>
     }
 });
 
-app.Run("http://localhost:5002");
+app.Run("http://localhost:5101");
 
 // Goodbye Agent implementation
 public class GoodbyeAgent

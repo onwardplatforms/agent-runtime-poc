@@ -173,18 +173,47 @@ class SimpleChunkingStrategy(ChunkingStrategy):
 class SemanticChunkingStrategy(ChunkingStrategy):
     """
     Advanced chunking strategy that respects semantic boundaries like paragraphs, 
-    sentences, and headings.
+    sentences, headings, code blocks, lists and tables.
     """
     
     def __init__(self, chunk_size: int = 512, chunk_overlap: int = 50):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.heading_pattern = re.compile(r'^#+\s+.+$|^.+\n[=\-]{2,}$', re.MULTILINE)
+        
+        # Enhanced patterns for structure detection
+        self.heading_pattern = re.compile(r'^(#+)\s+(.+)$', re.MULTILINE)
+        self.code_block_pattern = re.compile(r'```(?:\w+)?\n(.*?)\n```', re.DOTALL)
+        self.list_pattern = re.compile(r'^\s*[-*+]\s+.*$|^\s*\d+\.\s+.*$', re.MULTILINE)
+        self.table_pattern = re.compile(r'^\s*\|(?:.*\|)+\s*$\n^\s*\|(?:[-:]+\|)+\s*$', re.MULTILINE)
+        self.sentence_end_pattern = re.compile(r'(?<=[.!?])\s+')
         
     def is_heading(self, text: str) -> bool:
         """Check if a text segment is a heading."""
-        # Check for Markdown style headings or underlined headings
-        return bool(self.heading_pattern.match(text))
+        return bool(self.heading_pattern.match(text.strip()))
+    
+    def get_heading_level(self, text: str) -> tuple:
+        """
+        Extract heading level and text.
+        Returns (0, original_text) if not a heading.
+        """
+        match = self.heading_pattern.match(text.strip())
+        if match:
+            level = len(match.group(1))
+            content = match.group(2)
+            return level, content
+        return 0, text
+    
+    def is_code_block(self, text: str) -> bool:
+        """Check if text is or contains a code block."""
+        return bool(self.code_block_pattern.search(text))
+    
+    def is_list_item(self, text: str) -> bool:
+        """Check if text is a list item or contains list items."""
+        return bool(self.list_pattern.search(text))
+    
+    def is_table(self, text: str) -> bool:
+        """Check if text contains a table."""
+        return bool(self.table_pattern.search(text))
     
     def get_segment_importance(self, segment: str) -> int:
         """
@@ -195,17 +224,26 @@ class SemanticChunkingStrategy(ChunkingStrategy):
         
         # Headings are most important
         if self.is_heading(segment):
-            return 100
+            level, _ = self.get_heading_level(segment)
+            return 100 + (6 - level) * 10  # Higher level headings (h1, h2) get higher importance
             
-        # Lists, code blocks, etc. are important
-        if segment.startswith(('- ', '* ', '1. ', '```', '>', '|')):
-            return 80
+        # Code blocks should be kept intact when possible
+        if self.is_code_block(segment):
+            return 95
+            
+        # Tables should usually be kept intact
+        if self.is_table(segment):
+            return 90
+            
+        # Lists are important to keep together
+        if self.is_list_item(segment):
+            return 85
             
         # Longer paragraphs are generally important
         if len(segment) > 200:
             return 60
             
-        # Shorter paragraphs
+        # Medium paragraphs
         if len(segment) > 100:
             return 40
             
@@ -214,7 +252,8 @@ class SemanticChunkingStrategy(ChunkingStrategy):
     
     def split_text(self, text: str, document_id: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Split text based on semantic boundaries like paragraphs, sentences, and headings.
+        Split text based on semantic boundaries like paragraphs, sentences, headings,
+        code blocks, and other structured content.
         
         Args:
             text: The text to split
@@ -237,6 +276,8 @@ class SemanticChunkingStrategy(ChunkingStrategy):
         if not paragraphs:
             return []
         
+        # Track document structure with heading hierarchy
+        current_heading_stack = []
         current_chunk = []
         current_size = 0
         current_segment_types = set()
@@ -245,104 +286,377 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             paragraph = paragraph.strip()
             para_size = len(paragraph)
             
-            # Determine segment type
+            # Determine segment type and importance
             is_heading = self.is_heading(paragraph)
-            segment_type = "heading" if is_heading else "paragraph"
+            is_code = self.is_code_block(paragraph)
+            is_list = self.is_list_item(paragraph)
+            is_table = self.is_table(paragraph)
             
-            # If a heading is encountered, try to start a new chunk unless the current chunk is empty
-            if is_heading and current_chunk and current_size > 0:
-                # Add current chunk to list
-                chunk_text = "\n\n".join(current_chunk)
-                chunk_metadata = metadata.copy()
-                chunk_metadata["chunk_index"] = len(chunks)
-                chunk_metadata["total_chunks"] = 0  # Placeholder
-                chunk_metadata["segment_types"] = list(current_segment_types)
-                chunks.append({
-                    "text": chunk_text,
-                    "metadata": chunk_metadata
+            segment_importance = self.get_segment_importance(paragraph)
+            
+            # Update heading stack if this is a heading
+            if is_heading:
+                level, content = self.get_heading_level(paragraph)
+                
+                # Remove any headings of equal or greater level from the stack
+                while current_heading_stack and current_heading_stack[-1]["level"] >= level:
+                    current_heading_stack.pop()
+                
+                # Add this heading to the stack
+                current_heading_stack.append({
+                    "level": level,
+                    "content": content,
+                    "original": paragraph
                 })
                 
-                # Reset current chunk
-                current_chunk = []
-                current_size = 0
-                current_segment_types = set()
-            
-            # If paragraph is very large, split it by sentences
-            if para_size > self.chunk_size:
-                if current_chunk:
-                    # Add current chunk first
+                # If we have content in current_chunk, finalize it before the new heading
+                # This ensures new sections start with their headings
+                if current_chunk and current_size > 0:
                     chunk_text = "\n\n".join(current_chunk)
                     chunk_metadata = metadata.copy()
                     chunk_metadata["chunk_index"] = len(chunks)
-                    chunk_metadata["total_chunks"] = 0  # Placeholder
+                    chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack[:-1]]  # Exclude current heading
                     chunk_metadata["segment_types"] = list(current_segment_types)
                     chunks.append({
                         "text": chunk_text,
                         "metadata": chunk_metadata
                     })
+                    
+                    # Reset for new section
+                    current_chunk = []
+                    current_size = 0
+                    current_segment_types = set()
+            
+            # Special handling for code blocks, tables, and lists - try to keep them whole
+            if is_code or is_table or is_list:
+                segment_type = "code_block" if is_code else "table" if is_table else "list"
                 
-                # Split large paragraph by sentences
-                sentences = nltk.sent_tokenize(paragraph)
-                current_chunk = []
-                current_size = 0
-                current_segment_types = set()
-                chunk_para = ""
+                # If adding this segment would exceed chunk size and we already have content
+                if current_size + para_size + (2 if current_chunk else 0) > self.chunk_size and current_chunk:
+                    # Finalize current chunk
+                    chunk_text = "\n\n".join(current_chunk)
+                    chunk_metadata = metadata.copy()
+                    chunk_metadata["chunk_index"] = len(chunks)
+                    chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                    chunk_metadata["segment_types"] = list(current_segment_types)
+                    chunks.append({
+                        "text": chunk_text,
+                        "metadata": chunk_metadata
+                    })
+                    
+                    # Start new chunk with this segment
+                    current_chunk = [paragraph]
+                    current_size = para_size
+                    current_segment_types = {segment_type}
+                    continue
                 
-                for sentence in sentences:
-                    if len(chunk_para) + len(sentence) + 1 <= self.chunk_size:
-                        if chunk_para:
-                            chunk_para += " " + sentence
-                        else:
-                            chunk_para = sentence
-                    else:
-                        # Add completed paragraph chunk
-                        if chunk_para:
-                            current_chunk.append(chunk_para)
-                            current_segment_types.add("paragraph_split")
+                # If the segment itself exceeds chunk size, we need to split it
+                if para_size > self.chunk_size:
+                    # First add any existing content
+                    if current_chunk:
+                        chunk_text = "\n\n".join(current_chunk)
+                        chunk_metadata = metadata.copy()
+                        chunk_metadata["chunk_index"] = len(chunks)
+                        chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                        chunk_metadata["segment_types"] = list(current_segment_types)
+                        chunks.append({
+                            "text": chunk_text,
+                            "metadata": chunk_metadata
+                        })
+                    
+                    # For code blocks, try to split on newlines to preserve syntax
+                    if is_code:
+                        # Extract the code block content
+                        match = self.code_block_pattern.search(paragraph)
+                        if match:
+                            lang_marker = paragraph[:paragraph.find('\n')]
+                            code_content = match.group(1)
+                            lines = code_content.split("\n")
                             
-                            # If adding this split paragraph would exceed chunk size, create a new chunk
-                            if current_size + len(chunk_para) > self.chunk_size:
-                                chunk_text = "\n\n".join(current_chunk[:-1])  # Exclude the last added paragraph
+                            current_block_lines = []
+                            current_block_size = len(lang_marker) + 4  # ```lang\n and \n```
+                            
+                            for line in lines:
+                                line_len = len(line) + 1  # +1 for newline
+                                if current_block_size + line_len <= self.chunk_size or not current_block_lines:
+                                    current_block_lines.append(line)
+                                    current_block_size += line_len
+                                else:
+                                    # Create a properly formatted code block
+                                    block_content = "\n".join(current_block_lines)
+                                    block_text = f"{lang_marker}\n{block_content}\n```"
+                                    
+                                    chunk_metadata = metadata.copy()
+                                    chunk_metadata["chunk_index"] = len(chunks)
+                                    chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                                    chunk_metadata["segment_types"] = ["code_block_split"]
+                                    chunk_metadata["is_continuation"] = current_block_lines != lines[:len(current_block_lines)]
+                                    
+                                    chunks.append({
+                                        "text": block_text,
+                                        "metadata": chunk_metadata
+                                    })
+                                    
+                                    # Start new block with this line
+                                    current_block_lines = [line]
+                                    current_block_size = len(lang_marker) + line_len + 4
+                            
+                            # Add final code block if any
+                            if current_block_lines:
+                                block_content = "\n".join(current_block_lines)
+                                block_text = f"{lang_marker}\n{block_content}\n```"
+                                
                                 chunk_metadata = metadata.copy()
                                 chunk_metadata["chunk_index"] = len(chunks)
-                                chunk_metadata["total_chunks"] = 0  # Placeholder
-                                chunk_metadata["segment_types"] = list(current_segment_types)
-                                chunk_metadata["split_type"] = "sentence"
+                                chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                                chunk_metadata["segment_types"] = ["code_block_split"]
+                                chunk_metadata["is_continuation"] = current_block_lines != lines[:len(current_block_lines)]
+                                
+                                chunks.append({
+                                    "text": block_text,
+                                    "metadata": chunk_metadata
+                                })
+                        else:
+                            # Fallback if code block extraction fails
+                            for i in range(0, para_size, self.chunk_size - self.chunk_overlap):
+                                chunk_text = paragraph[i:i + self.chunk_size]
+                                chunk_metadata = metadata.copy()
+                                chunk_metadata["chunk_index"] = len(chunks)
+                                chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                                chunk_metadata["segment_types"] = ["code_block_fallback"]
+                                chunk_metadata["is_continuation"] = i > 0
+                                
                                 chunks.append({
                                     "text": chunk_text,
                                     "metadata": chunk_metadata
                                 })
-                                
-                                # New chunk starts with the last paragraph
-                                current_chunk = [current_chunk[-1]]
-                                current_size = len(current_chunk[-1])
-                                current_segment_types = {"paragraph_split"}
-                            else:
-                                current_size += len(chunk_para)
+                    elif is_table:
+                        # For tables, try to keep rows together
+                        rows = paragraph.split("\n")
                         
-                        # Start new paragraph with this sentence
-                        chunk_para = sentence
-                
-                # Add any remaining partial paragraph
-                if chunk_para:
-                    current_chunk.append(chunk_para)
-                    current_segment_types.add("paragraph_split")
-                    current_size += len(chunk_para)
+                        current_table_rows = []
+                        current_table_size = 0
+                        
+                        for row in rows:
+                            row_len = len(row) + 1  # +1 for newline
+                            if current_table_size + row_len <= self.chunk_size or not current_table_rows:
+                                current_table_rows.append(row)
+                                current_table_size += row_len
+                            else:
+                                # Add table chunk
+                                table_text = "\n".join(current_table_rows)
+                                
+                                chunk_metadata = metadata.copy()
+                                chunk_metadata["chunk_index"] = len(chunks)
+                                chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                                chunk_metadata["segment_types"] = ["table_split"]
+                                chunk_metadata["is_continuation"] = current_table_rows != rows[:len(current_table_rows)]
+                                
+                                chunks.append({
+                                    "text": table_text,
+                                    "metadata": chunk_metadata
+                                })
+                                
+                                # Start new table chunk with this row
+                                current_table_rows = [row]
+                                current_table_size = row_len
+                        
+                        # Add final table chunk if any
+                        if current_table_rows:
+                            table_text = "\n".join(current_table_rows)
+                            
+                            chunk_metadata = metadata.copy()
+                            chunk_metadata["chunk_index"] = len(chunks)
+                            chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                            chunk_metadata["segment_types"] = ["table_split"]
+                            chunk_metadata["is_continuation"] = current_table_rows != rows[:len(current_table_rows)]
+                            
+                            chunks.append({
+                                "text": table_text,
+                                "metadata": chunk_metadata
+                            })
+                    else:
+                        # For other large content, split by lines first
+                        lines = paragraph.split("\n")
+                        
+                        current_lines = []
+                        current_lines_size = 0
+                        
+                        for line in lines:
+                            line_len = len(line) + 1  # +1 for newline
+                            if current_lines_size + line_len <= self.chunk_size or not current_lines:
+                                current_lines.append(line)
+                                current_lines_size += line_len
+                            else:
+                                # Add lines chunk
+                                lines_text = "\n".join(current_lines)
+                                
+                                chunk_metadata = metadata.copy()
+                                chunk_metadata["chunk_index"] = len(chunks)
+                                chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                                chunk_metadata["segment_types"] = ["list_split"]
+                                chunk_metadata["is_continuation"] = current_lines != lines[:len(current_lines)]
+                                
+                                chunks.append({
+                                    "text": lines_text,
+                                    "metadata": chunk_metadata
+                                })
+                                
+                                # Start new chunk with this line
+                                current_lines = [line]
+                                current_lines_size = line_len
+                        
+                        # Add final lines chunk if any
+                        if current_lines:
+                            lines_text = "\n".join(current_lines)
+                            
+                            chunk_metadata = metadata.copy()
+                            chunk_metadata["chunk_index"] = len(chunks)
+                            chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                            chunk_metadata["segment_types"] = ["list_split"]
+                            chunk_metadata["is_continuation"] = current_lines != lines[:len(current_lines)]
+                            
+                            chunks.append({
+                                "text": lines_text,
+                                "metadata": chunk_metadata
+                            })
+                    
+                    # Reset for next paragraph
+                    current_chunk = []
+                    current_size = 0
+                    current_segment_types = set()
+                    continue
+                else:
+                    # Add this special content to current chunk if it fits
+                    current_chunk.append(paragraph)
+                    current_segment_types.add(segment_type)
+                    current_size += para_size + (2 if current_chunk and len(current_chunk) > 1 else 0)
+                    continue
             
-            # Normal case: add paragraph to current chunk if it fits
-            elif current_size + (2 if current_chunk else 0) + para_size <= self.chunk_size:
-                current_chunk.append(paragraph)
-                current_segment_types.add(segment_type)
-                current_size += (2 if len(current_chunk) > 1 else 0) + para_size  # Add 2 for "\n\n" if not first segment
-            
-            # If current paragraph doesn't fit, finalize current chunk and start a new one
-            else:
-                # Add current chunk to list
+            # For large regular paragraphs, split by sentences
+            if para_size > self.chunk_size:
+                # Add current chunk first if it exists
                 if current_chunk:
                     chunk_text = "\n\n".join(current_chunk)
                     chunk_metadata = metadata.copy()
                     chunk_metadata["chunk_index"] = len(chunks)
-                    chunk_metadata["total_chunks"] = 0  # Placeholder
+                    chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                    chunk_metadata["segment_types"] = list(current_segment_types)
+                    chunks.append({
+                        "text": chunk_text,
+                        "metadata": chunk_metadata
+                    })
+                    current_chunk = []
+                    current_size = 0
+                    current_segment_types = set()
+                
+                # Split large paragraph by sentences
+                try:
+                    sentences = nltk.sent_tokenize(paragraph)
+                except LookupError:
+                    # Fallback to simple tokenizer if NLTK data is not available
+                    sentences = self.simple_sent_tokenize(paragraph)
+                
+                current_para = ""
+                
+                for sent_idx, sentence in enumerate(sentences):
+                    sent_len = len(sentence)
+                    
+                    # If this single sentence is too big, split it by words
+                    if sent_len > self.chunk_size:
+                        if current_para:
+                            # First add any accumulated paragraph content
+                            chunk_metadata = metadata.copy()
+                            chunk_metadata["chunk_index"] = len(chunks)
+                            chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                            chunk_metadata["segment_types"] = ["paragraph_split"]
+                            chunks.append({
+                                "text": current_para,
+                                "metadata": chunk_metadata
+                            })
+                        
+                        # Split this long sentence by keeping full words
+                        words = sentence.split()
+                        current_sentence = ""
+                        
+                        for word in words:
+                            if len(current_sentence) + len(word) + 1 <= self.chunk_size or not current_sentence:
+                                current_sentence += (" " + word if current_sentence else word)
+                            else:
+                                # Add sentence chunk
+                                chunk_metadata = metadata.copy()
+                                chunk_metadata["chunk_index"] = len(chunks)
+                                chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                                chunk_metadata["segment_types"] = ["sentence_split"]
+                                chunks.append({
+                                    "text": current_sentence,
+                                    "metadata": chunk_metadata
+                                })
+                                
+                                # Start new sentence chunk
+                                current_sentence = word
+                        
+                        # Add final sentence part if any
+                        if current_sentence:
+                            chunk_metadata = metadata.copy()
+                            chunk_metadata["chunk_index"] = len(chunks)
+                            chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                            chunk_metadata["segment_types"] = ["sentence_split"]
+                            chunks.append({
+                                "text": current_sentence,
+                                "metadata": chunk_metadata
+                            })
+                        
+                        # Reset accumulator
+                        current_para = ""
+                    elif len(current_para) + sent_len + 1 <= self.chunk_size or not current_para:
+                        # Add sentence to current paragraph
+                        current_para += (" " + sentence if current_para else sentence)
+                    else:
+                        # Add completed paragraph chunk
+                        chunk_metadata = metadata.copy()
+                        chunk_metadata["chunk_index"] = len(chunks)
+                        chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                        chunk_metadata["segment_types"] = ["paragraph_split"]
+                        chunks.append({
+                            "text": current_para,
+                            "metadata": chunk_metadata
+                        })
+                        
+                        # Create overlap for next chunk with sentence transitions
+                        words = current_para.split()
+                        if len(words) > self.chunk_overlap:
+                            overlap = " ".join(words[-self.chunk_overlap:])
+                            current_para = overlap + " " + sentence if overlap else sentence
+                        else:
+                            current_para = sentence
+                
+                # Add the last paragraph portion if it exists
+                if current_para:
+                    chunk_metadata = metadata.copy()
+                    chunk_metadata["chunk_index"] = len(chunks)
+                    chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
+                    chunk_metadata["segment_types"] = ["paragraph_split"]
+                    chunks.append({
+                        "text": current_para,
+                        "metadata": chunk_metadata
+                    })
+                
+                # Continue to next paragraph
+                continue
+            
+            # Normal case: add paragraph to current chunk if it fits
+            if current_size + para_size + (2 if current_chunk else 0) <= self.chunk_size:
+                current_chunk.append(paragraph)
+                current_segment_types.add("paragraph" if not is_heading else f"heading_{self.get_heading_level(paragraph)[0]}")
+                current_size += para_size + (2 if current_chunk and len(current_chunk) > 1 else 0)  # +2 for "\n\n"
+            else:
+                # Finalize current chunk and start a new one
+                if current_chunk:
+                    chunk_text = "\n\n".join(current_chunk)
+                    chunk_metadata = metadata.copy()
+                    chunk_metadata["chunk_index"] = len(chunks)
+                    chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
                     chunk_metadata["segment_types"] = list(current_segment_types)
                     chunks.append({
                         "text": chunk_text,
@@ -351,7 +665,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
                 
                 # Start a new chunk with this paragraph
                 current_chunk = [paragraph]
-                current_segment_types = {segment_type}
+                current_segment_types = {"paragraph" if not is_heading else f"heading_{self.get_heading_level(paragraph)[0]}"}
                 current_size = para_size
         
         # Add the last chunk if not empty
@@ -359,19 +673,28 @@ class SemanticChunkingStrategy(ChunkingStrategy):
             chunk_text = "\n\n".join(current_chunk)
             chunk_metadata = metadata.copy()
             chunk_metadata["chunk_index"] = len(chunks)
-            chunk_metadata["total_chunks"] = 0  # Placeholder
+            chunk_metadata["heading_context"] = [h["content"] for h in current_heading_stack]
             chunk_metadata["segment_types"] = list(current_segment_types)
             chunks.append({
                 "text": chunk_text,
                 "metadata": chunk_metadata
             })
         
-        # Update total_chunks in metadata for all chunks
+        # Update total_chunks in metadata
         for chunk in chunks:
             chunk["metadata"]["total_chunks"] = len(chunks)
         
         logger.info(f"Created {len(chunks)} chunks using semantic chunking strategy")
         return chunks
+
+    # Simple sentence tokenization as fallback
+    def simple_sent_tokenize(self, text: str) -> List[str]:
+        """Simple sentence tokenizer that splits on periods, exclamation marks, and question marks."""
+        if not text:
+            return []
+        sentences = self.sentence_end_pattern.split(text)
+        # Make sure we don't end up with empty sentences
+        return [s.strip() for s in sentences if s.strip()]
 
 
 class TextChunker:
