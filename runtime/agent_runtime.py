@@ -7,7 +7,7 @@ import logging
 import os
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, AsyncGenerator
 
 import aiohttp
 import semantic_kernel as sk
@@ -52,7 +52,7 @@ Your primary responsibilities are:
 5. **CONSOLIDATION**: Integrate plugin responses into a coherent final answer, focusing on correctness and clarity.
 
 **IMPORTANT**:
-- Use function calls only when needed (e.g., if the user's query might require factual data from uploaded documents, consider calling the 'rag_plugin.search_documents' function).
+- Prefer function calls to plugins over direct answers if there is a relevant agent / plugin.
 - Always pass the correct 'conversation_id' when calling any function, especially for RAG.
 - If no plugin function is relevant, simply reply directly as yourself.
 - In final user responses, keep it concise and helpful.
@@ -234,6 +234,58 @@ class AgentGroupChat:
         })
 
         return final_message
+
+    async def stream_process_query(self, query: str, verbose: bool = False) -> AsyncGenerator[Dict[str, Any], None]:
+        """Stream the processing of a user query, yielding updates as they occur."""
+        if not self.agents:
+            yield {"chunk": "No agents available for the group chat.", "complete": False}
+            return
+
+        # Initial message
+        yield {"chunk": "Starting group chat streaming response...", "complete": False}
+
+        # For each agent, yield updates about their involvement
+        for agent in self.agents:
+            # Yield information about which agent is being called
+            yield {
+                "agent_call": agent.id,
+                "agent_query": query,
+                "complete": False
+            }
+
+            # Wait briefly to simulate processing time and improve UI experience
+            await asyncio.sleep(0.1)
+
+            # Get the response from this agent
+            response_content = await agent.call_agent(query, "user")
+
+            # Yield the agent's response
+            yield {
+                "agent_id": agent.id,
+                "agent_response": response_content,
+                "complete": False
+            }
+
+        # Process the final response similar to process_query
+        responses = []
+        for agent in self.agents:
+            response_content = await agent.call_agent(query, "user")
+
+            responses.append({
+                "agent_id": agent.id,
+                "agent_name": agent.name,
+                "response": response_content
+            })
+
+        combined_content = " ".join([r["response"] for r in responses])
+
+        # Yield the final combined response
+        yield {
+            "chunk": "Group chat complete",
+            "complete": True,
+            "response": combined_content,
+            "agents_used": [agent.id for agent in self.agents]
+        }
 
     def get_conversation_history(self) -> List[Dict[str, Any]]:
         return self.messages
@@ -474,8 +526,38 @@ class AgentRuntime:
     def get_agent_by_id(self, agent_id: str) -> Optional[AgentPlugin]:
         return self.agents.get(agent_id)
 
-    def get_all_agents(self) -> Dict[str, AgentPlugin]:
-        return self.agents
+    def get_all_agents(self):
+        """Get all agent plugins."""
+        return [
+            {
+                "id": agent.id,
+                "name": agent.name,
+                "description": agent.description,
+                "capabilities": agent.capabilities,
+                "conversation_starters": agent.conversation_starters,
+                "endpoint": agent.endpoint
+            }
+            for agent_id, agent in self.agents.items()
+        ]
+
+    async def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Get a conversation by ID."""
+        if conversation_id in self.conversations:
+            return self.conversations[conversation_id]
+        return None
+
+    async def list_conversations(self) -> List[Dict[str, Any]]:
+        """List all conversations."""
+        return list(self.conversations.values())
+
+    async def create_conversation(self, conversation_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new conversation."""
+        conversation_id = conversation_data.get("id", str(uuid.uuid4()))
+        self.conversations[conversation_id] = {
+            "id": conversation_id,
+            **conversation_data
+        }
+        return self.conversations[conversation_id]
 
     async def stream_process_query(self, query: str, conversation_id: Optional[str] = None, verbose: bool = False):
         """

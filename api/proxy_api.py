@@ -152,17 +152,22 @@ async def proxy_upload(request: Request):
                     field_value.seek(0)
 
                 # Read file content
-                file_content = await field_value.read()
-                logger.info(f"Read {len(file_content)} bytes from file {field_value.filename}")
+                if hasattr(field_value, 'read') and callable(field_value.read):
+                    file_content = await field_value.read()
+                    filename = getattr(field_value, 'filename', 'unknown_file')
+                    content_type = getattr(field_value, 'content_type', 'application/octet-stream')
+                    logger.info(f"Read {len(file_content)} bytes from file {filename}")
 
-                # Add to outgoing form with correct field name
-                outgoing_form.add_field(
-                    target_field_name,
-                    file_content,
-                    filename=field_value.filename,
-                    content_type=field_value.content_type or 'application/octet-stream'
-                )
-                logger.info(f"Added file field '{target_field_name}' with filename '{field_value.filename}'")
+                    # Add to outgoing form with correct field name
+                    outgoing_form.add_field(
+                        target_field_name,
+                        file_content,
+                        filename=filename,
+                        content_type=content_type
+                    )
+                    logger.info(f"Added file field '{target_field_name}' with filename '{filename}'")
+                else:
+                    logger.warning(f"Field value {field_value} does not have a read method")
             else:
                 # For non-file fields (like conversation_id), pass as is
                 outgoing_form.add_field(field_name, str(field_value))
@@ -273,16 +278,22 @@ async def proxy_request(target_url: str, request: Request):
                 if "multipart/form-data" in content_type:
                     # For file uploads, we need to handle form data
                     form_data = aiohttp.FormData()
-                    async for part in request.form():
-                        if isinstance(part, UploadFile):
+
+                    # Get form data using request.body instead of async iteration
+                    form = await request.form()
+
+                    for field_name, field_value in form.items():
+                        if hasattr(field_value, 'read') and callable(field_value.read):
+                            # This is a file-like object (UploadFile)
                             form_data.add_field(
-                                part.name,
-                                await part.read(),
-                                filename=part.filename,
-                                content_type=part.content_type
+                                field_name,
+                                await field_value.read(),
+                                filename=getattr(field_value, 'filename', 'unknown_file'),
+                                content_type=getattr(field_value, 'content_type', 'application/octet-stream')
                             )
                         else:
-                            form_data.add_field(part.name, part.value)
+                            # This is a simple form field
+                            form_data.add_field(field_name, str(field_value))
 
                     response = await session.request(
                         method=method,

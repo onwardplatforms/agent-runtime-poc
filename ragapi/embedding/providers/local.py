@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional, Any
 
 import numpy as np
 
@@ -20,11 +20,14 @@ class SentenceTransformerEmbedding(EmbeddingModel):
             model_name: Name of the SentenceTransformer model to use
         """
         self.model_name = model_name or settings.embedding_model
-        self.model = None
-        self._embedding_dim = None
+        self.model: Any = None  # Will be initialized on first use
+        self._embedding_dim: Optional[int] = None
 
     async def initialize(self) -> None:
         """Initialize the embedding model."""
+        if self.model is not None:
+            return  # Already initialized
+
         try:
             # Import here to avoid dependency if not using this model
             from sentence_transformers import SentenceTransformer
@@ -33,8 +36,9 @@ class SentenceTransformerEmbedding(EmbeddingModel):
             self.model = SentenceTransformer(self.model_name)
 
             # Get embedding dimension by embedding a test string
-            test_embedding = self.model.encode(["test"])
-            self._embedding_dim = test_embedding.shape[1]
+            if self.model is not None:  # Double-check after initialization
+                test_embedding = self.model.encode(["test"])
+                self._embedding_dim = test_embedding.shape[1]
 
             logger.info(f"Initialized embedding model with dimension: {self._embedding_dim}")
         except ImportError:
@@ -48,6 +52,9 @@ class SentenceTransformerEmbedding(EmbeddingModel):
         """Generate embeddings for a list of texts."""
         if not self.model:
             await self.initialize()
+
+        if self.model is None:
+            raise ValueError("Failed to initialize the embedding model")
 
         try:
             # Encode all texts at once for efficiency

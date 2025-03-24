@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
-from runtime.agent_runtime import AgentGroupChat, AgentRuntime
+from runtime.agent_runtime import AgentGroupChat, AgentRuntime, AgentTerminationStrategy, AgentPlugin
 
 # Configure logging
 logging.basicConfig(
@@ -196,16 +196,19 @@ async def group_chat(query: GroupChatQuery, runtime: AgentRuntime = Depends(get_
             )
 
         # Create a group chat with the specified agents
+        agents = [runtime.agents.get(agent_id) for agent_id in query.agent_ids or []]
+        # Filter out None values and ensure correct type
+        agents_for_group_chat: List[AgentPlugin] = [agent for agent in agents if agent is not None]
+
         group_chat = AgentGroupChat(
-            runtime=runtime,
-            agent_ids=query.agent_ids,
-            max_iterations=query.max_iterations,
-            conversation_id=query.conversation_id,
-            user_id=query.user_id
+            agents=agents_for_group_chat,
+            termination_strategy=AgentTerminationStrategy(max_iterations=query.max_iterations)
         )
 
         result = await group_chat.process_query(
             query=query.query,
+            user_id=query.user_id,
+            conversation_id=query.conversation_id,
             verbose=query.verbose
         )
 
@@ -225,12 +228,13 @@ async def stream_group_chat_response(query: GroupChatQuery, runtime: AgentRuntim
         yield f"data: {json.dumps({'chunk': 'Starting group chat...', 'complete': False})}\n\n"
 
         # Create a group chat with the specified agents
+        agents = [runtime.agents.get(agent_id) for agent_id in query.agent_ids or []]
+        # Filter out None values and ensure correct type
+        agents_for_group_chat: List[AgentPlugin] = [agent for agent in agents if agent is not None]
+
         group_chat = AgentGroupChat(
-            runtime=runtime,
-            agent_ids=query.agent_ids,
-            max_iterations=query.max_iterations,
-            conversation_id=query.conversation_id,
-            user_id=query.user_id
+            agents=agents_for_group_chat,
+            termination_strategy=AgentTerminationStrategy(max_iterations=query.max_iterations)
         )
 
         async for chunk in group_chat.stream_process_query(
@@ -259,19 +263,8 @@ async def stream_group_chat_response(query: GroupChatQuery, runtime: AgentRuntim
 async def list_agents(runtime: AgentRuntime = Depends(get_runtime)):
     """List all available agents."""
     try:
-        agent_plugins = runtime.get_all_agents()
-        agents = []
-
-        for agent_id, plugin in agent_plugins.items():
-            agents.append({
-                "id": plugin.id,
-                "name": plugin.name,
-                "description": plugin.description,
-                "capabilities": plugin.capabilities,
-                "conversation_starters": plugin.conversation_starters,
-                "endpoint": plugin.endpoint
-            })
-
+        # get_all_agents() already returns a list of dictionaries with agent information
+        agents = runtime.get_all_agents()
         return {"agents": agents}
     except Exception as e:
         logger.error(f"Error listing agents: {e}")
@@ -309,7 +302,7 @@ async def create_conversation(runtime: AgentRuntime = Depends(get_runtime)):
     """Create a new conversation."""
     try:
         conversation_id = str(uuid.uuid4())
-        await runtime.create_conversation(conversation_id)
+        await runtime.create_conversation({"id": conversation_id})
         return {"conversation_id": conversation_id}
     except Exception as e:
         logger.error(f"Error creating conversation: {e}")

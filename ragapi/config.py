@@ -1,7 +1,6 @@
 import os
 from typing import Literal
 
-from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -43,12 +42,11 @@ class Settings(BaseSettings):
     # Model performance settings
     use_gpu: bool = True  # Whether to use GPU for embedding generation if available
 
-    # Use ConfigDict instead of class Config
-    model_config = ConfigDict(
-        env_prefix="RAG_",
-        env_file=".env",
-        extra="ignore"  # Ignore extra fields from .env file
-    )
+    # Configuration for environment variables
+    class Config:
+        env_prefix = "RAG_"
+        env_file = ".env"
+        extra = "ignore"  # Ignore extra fields from .env file
 
 
 # Create a singleton instance

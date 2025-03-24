@@ -246,18 +246,19 @@ async def process_document(
         processing_time = time.time() - start_time
 
         logger.error(f"Error processing document {document_id} at stage '{result['stage']}': {error_message}")
-        result["error"] = {
+        error_dict: Dict[str, Any] = {
             "message": error_message,
             "type": type(e).__name__
         }
+        result["error"] = error_dict
         result["processing_time"] = processing_time
 
         await update_document_status(
             document_id=document_id,
             conversation_id=conversation_id,
             status=DocumentStatus.FAILED,
-            stage=result["stage"],
-            error=result["error"],
+            stage=ProcessingStage(result["stage"]),  # Cast to ProcessingStage enum
+            error=error_dict,  # Use the typed dictionary
             metadata={"processing_time": processing_time}
         )
 
@@ -329,7 +330,7 @@ async def upload_document(
         return DocumentResponse(
             document_id=document_id,
             conversation_id=conversation_id,
-            filename=file.filename,
+            filename=file.filename or "unknown",  # Provide a default if filename is None
             status=status,
             message=message
         )
@@ -402,7 +403,7 @@ async def get_document_status(
                 mime_type=meta.get("mime_type"),
                 page_count=meta.get("page_count"),
                 chunk_count=meta.get("chunk_count", 0),
-                created_at=datetime.fromisoformat(meta.get("created_at", datetime.now().isoformat())),
+                created_at=datetime.fromisoformat(str(meta.get("created_at"))) if meta.get("created_at") else datetime.now(),
                 status=DocumentStatus(doc_status),
                 processing_stage=ProcessingStage(processing_stage) if processing_stage else None,
                 last_updated=datetime.fromisoformat(last_updated) if last_updated else None,
@@ -430,7 +431,7 @@ async def get_document_status(
                     mime_type=doc["metadata"].get("mime_type"),
                     page_count=doc["metadata"].get("page_count"),
                     chunk_count=doc.get("chunk_count", 0),
-                    created_at=doc.get("created_at"),
+                    created_at=datetime.fromisoformat(str(doc.get("created_at"))) if doc.get("created_at") else datetime.now(),
                     status=DocumentStatus.INDEXED,
                     processing_stage=ProcessingStage.COMPLETE
                 )
@@ -522,9 +523,14 @@ async def query_documents(
             if chunk.metadata and "filename" in chunk.metadata:
                 document_name = chunk.metadata["filename"]
 
+            # Ensure document_id is not None before constructing ChunkInfo
+            if chunk.document_id is None:
+                # If document_id is None, use a default or skip this chunk
+                continue
+
             chunk_infos.append(ChunkInfo(
                 chunk_id=chunk.chunk_id,
-                document_id=chunk.document_id,
+                document_id=chunk.document_id,  # Now we've verified it's not None
                 document_name=document_name,
                 text=chunk.text,
                 metadata=chunk.metadata,

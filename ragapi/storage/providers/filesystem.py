@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from ...config import settings
-from ...storage.base import BaseStorage, Chunk
+from ..base import BaseStorage, Chunk
 
 logger = logging.getLogger("ragapi.storage.filesystem")
 
@@ -25,99 +25,81 @@ class FilesystemStorage(BaseStorage):
             base_dir: Base directory for embeddings. If None, uses the configured embeddings_path.
         """
         self.base_dir = Path(base_dir or settings.embeddings_path).resolve()
-        self.indexes = {}  # In-memory index for quick access
+        self.indexes: Dict[str, Dict[str, Any]] = {}  # In-memory index for quick access
 
     async def initialize(self) -> Dict[str, Any]:
-        """Initialize the filesystem storage."""
-        os.makedirs(self.base_dir, exist_ok=True)
-        logger.info(f"Initialized filesystem storage at {self.base_dir}")
+        """Initialize the storage by creating the base directory and loading existing indexes."""
+        try:
+            # Create the base directory if it doesn't exist
+            os.makedirs(self.base_dir, exist_ok=True)
 
-        # Load existing indexes
-        await self._load_indexes()
+            # Load existing indexes
+            await self._load_indexes()
 
-        return {
-            "status": "initialized",
-            "backend_type": "filesystem",
-            "base_dir": str(self.base_dir)
-        }
+            return {"status": "initialized", "base_dir": str(self.base_dir)}
+        except Exception as e:
+            logger.error(f"Error initializing filesystem storage: {str(e)}")
+            raise
 
     async def _load_indexes(self) -> None:
-        """Load existing indexes from the filesystem."""
-        # Check all conversation directories
-        for conv_dir in self.base_dir.glob("*"):
-            if not conv_dir.is_dir():
-                continue
-
-            # Try to load the index file for this conversation
-            index_path = conv_dir / "index.json"
-            if index_path.exists():
-                try:
-                    with open(index_path, "r") as f:
-                        conv_index = json.load(f)
-                        conversation_id = conv_dir.name
-                        self.indexes[conversation_id] = conv_index
-                        logger.info(f"Loaded index for conversation {conversation_id} with {len(conv_index)} entries")
-                except Exception as e:
-                    logger.error(f"Error loading index from {index_path}: {str(e)}")
-
-        # Also load the root index
-        root_index_path = self.base_dir / "index.json"
-        if root_index_path.exists():
+        """Load existing conversation indexes from the filesystem."""
+        for item in os.listdir(self.base_dir):
             try:
-                with open(root_index_path, "r") as f:
-                    root_index = json.load(f)
-                    self.indexes[None] = root_index
-                    logger.info(f"Loaded root index with {len(root_index)} entries")
+                index_path = self.base_dir / item / "index.json"
+                if index_path.exists():
+                    with open(index_path, "r") as f:
+                        conversation_id = None if item == "default" else item
+                        self.indexes[conversation_id or "default"] = json.load(f)
+                        logger.info(f"Loaded index for conversation {conversation_id or 'default'}")
             except Exception as e:
-                logger.error(f"Error loading root index: {str(e)}")
+                logger.error(f"Error loading index for {item}: {str(e)}")
 
     async def _save_index(self, conversation_id: Optional[str] = None) -> None:
-        """Save the index to the filesystem."""
-        if conversation_id:
-            index_dir = self.base_dir / conversation_id
-        else:
-            index_dir = self.base_dir
+        """Save an index to the filesystem."""
+        # Use "default" as the key when conversation_id is None
+        conv_key = conversation_id or "default"
 
-        os.makedirs(index_dir, exist_ok=True)
+        # Get the index for this conversation
+        conv_index = self.indexes.get(conv_key, {})
 
-        index_path = index_dir / "index.json"
-        try:
-            conv_index = self.indexes.get(conversation_id, {})
-            with open(index_path, "w") as f:
-                json.dump(conv_index, f, indent=2)
-            logger.info(f"Saved index to {index_path}")
-        except Exception as e:
-            logger.error(f"Error saving index to {index_path}: {str(e)}")
+        # Create the conversation directory if it doesn't exist
+        conv_dir = self.base_dir / conv_key
+        os.makedirs(conv_dir, exist_ok=True)
+
+        # Save the index file
+        index_path = conv_dir / "index.json"
+        with open(index_path, "w") as f:
+            json.dump(conv_index, f, indent=2)
+
+        logger.debug(f"Saved index for conversation {conv_key} with {len(conv_index)} entries")
 
     def _get_chunk_path(self, chunk_id: str, conversation_id: Optional[str] = None) -> Path:
-        """Get the path for a chunk file."""
-        if conversation_id:
-            return self.base_dir / conversation_id / f"{chunk_id}.pickle"
-        else:
-            return self.base_dir / f"{chunk_id}.pickle"
+        """Get the path to a chunk file."""
+        # Use "default" as the directory when conversation_id is None
+        conv_key = conversation_id or "default"
+        return self.base_dir / conv_key / f"{chunk_id}.pkl"
 
     async def add_chunks(
         self, chunks: List[Chunk], conversation_id: Optional[str] = None
     ) -> List[str]:
         """Add chunks to the storage."""
+        # Use "default" as the key when conversation_id is None
+        conv_key = conversation_id or "default"
+
+        # Make sure the index for this conversation exists
+        if conv_key not in self.indexes:
+            self.indexes[conv_key] = {}
+
+        # Make sure the directory for this conversation exists
+        conv_dir = self.base_dir / conv_key
+        os.makedirs(conv_dir, exist_ok=True)
+
         if not chunks:
             return []
 
         # Initialize if needed
         if not os.path.exists(self.base_dir):
             await self.initialize()
-
-        # Ensure we have an index for this conversation
-        if conversation_id not in self.indexes:
-            self.indexes[conversation_id] = {}
-
-        # Ensure directory exists
-        if conversation_id:
-            chunk_dir = self.base_dir / conversation_id
-        else:
-            chunk_dir = self.base_dir
-
-        os.makedirs(chunk_dir, exist_ok=True)
 
         # Save each chunk
         chunk_ids = []
@@ -130,7 +112,7 @@ class FilesystemStorage(BaseStorage):
                     pickle.dump(chunk, f)
 
                 # Update the index
-                self.indexes[conversation_id][chunk.chunk_id] = {
+                self.indexes[conv_key][chunk.chunk_id] = {
                     "document_id": chunk.document_id,
                     "path": str(chunk_path),
                     "created_at": datetime.now().isoformat(),
@@ -151,16 +133,22 @@ class FilesystemStorage(BaseStorage):
     async def get_chunk(
         self, chunk_id: str, conversation_id: Optional[str] = None
     ) -> Optional[Chunk]:
-        """Get a chunk by ID."""
-        # Check if the chunk exists in our index
-        conv_index = self.indexes.get(conversation_id, {})
-        if chunk_id not in conv_index:
-            logger.warning(f"Chunk {chunk_id} not found in index for conversation {conversation_id}")
+        """Get a chunk from the storage."""
+        # Use "default" as the key when conversation_id is None
+        conv_key = conversation_id or "default"
+
+        # Check if the chunk exists in the index
+        if conv_key not in self.indexes or chunk_id not in self.indexes[conv_key]:
+            logger.warning(f"Chunk {chunk_id} not found in conversation {conv_key}")
             return None
 
         # Get the chunk path
-        chunk_path = Path(conv_index[chunk_id]["path"])
+        chunk_path = self._get_chunk_path(chunk_id, conversation_id)
+        if not chunk_path.exists():
+            logger.warning(f"Chunk file {chunk_path} not found")
+            return None
 
+        # Load the chunk
         try:
             with open(chunk_path, "rb") as f:
                 chunk = pickle.load(f)
@@ -176,12 +164,20 @@ class FilesystemStorage(BaseStorage):
         conversation_id: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
     ) -> List[Chunk]:
-        """Search for chunks by similarity to the query embedding."""
+        """Search for chunks by embedding similarity."""
+        # Use "default" as the key when conversation_id is None
+        conv_key = conversation_id or "default"
+
+        # Check if we have an index for this conversation
+        if conv_key not in self.indexes or not self.indexes[conv_key]:
+            logger.warning(f"No index for conversation {conv_key}")
+            return []
+
         # Initialize results
         results = []
 
         # Get the relevant index
-        conv_index = self.indexes.get(conversation_id, {})
+        conv_index = self.indexes[conv_key]
 
         # Load all chunks and compute similarity
         for chunk_id, chunk_info in conv_index.items():
@@ -238,75 +234,77 @@ class FilesystemStorage(BaseStorage):
     async def delete_document(
         self, document_id: str, conversation_id: Optional[str] = None
     ) -> int:
-        """Delete all chunks for a document."""
-        # Get the relevant index
-        conv_index = self.indexes.get(conversation_id, {})
+        """Delete a document and all its chunks."""
+        # Use "default" as the key when conversation_id is None
+        conv_key = conversation_id or "default"
+
+        # Check if we have an index for this conversation
+        if conv_key not in self.indexes:
+            logger.warning(f"No index for conversation {conv_key}")
+            return 0
 
         # Find all chunks for this document
-        document_chunks = []
-        for chunk_id, chunk_info in conv_index.items():
-            if chunk_info.get("document_id") == document_id:
-                document_chunks.append(chunk_id)
+        chunk_ids_to_delete = []
+        for chunk_id, chunk_info in list(self.indexes[conv_key].items()):
+            if chunk_info.get('document_id') == document_id:
+                chunk_ids_to_delete.append(chunk_id)
 
-        # Delete each chunk
+        # Delete the chunks
         deleted_count = 0
-        for chunk_id in document_chunks:
-            chunk_path = Path(conv_index[chunk_id]["path"])
-            try:
-                # Delete the chunk file
-                if chunk_path.exists():
+        for chunk_id in chunk_ids_to_delete:
+            # Remove from index
+            self.indexes[conv_key].pop(chunk_id, None)
+
+            # Delete the file
+            chunk_path = self._get_chunk_path(chunk_id, conversation_id)
+            if chunk_path.exists():
+                try:
                     os.remove(chunk_path)
+                    deleted_count += 1
+                except Exception as e:
+                    logger.error(f"Error deleting chunk file {chunk_path}: {str(e)}")
 
-                # Remove from index
-                del conv_index[chunk_id]
-                deleted_count += 1
+        # Save the updated index
+        await self._save_index(conversation_id)
 
-            except Exception as e:
-                logger.error(f"Error deleting chunk {chunk_id}: {str(e)}")
-
-        # Save the updated index if we deleted anything
-        if deleted_count > 0:
-            await self._save_index(conversation_id)
-
-        logger.info(f"Deleted {deleted_count} chunks for document {document_id}")
+        logger.info(f"Deleted document {document_id} with {deleted_count} chunks")
         return deleted_count
 
     async def list_documents(
         self, conversation_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """List all documents."""
-        # Get the relevant index
-        conv_index = self.indexes.get(conversation_id, {})
+        """List all documents in the storage."""
+        # Use "default" as the key when conversation_id is None
+        conv_key = conversation_id or "default"
 
-        # Get unique document IDs
-        document_ids = set()
-        for chunk_info in conv_index.values():
+        # Check if we have an index for this conversation
+        if conv_key not in self.indexes:
+            logger.warning(f"No index for conversation {conv_key}")
+            return []
+
+        # Collect unique document IDs and their metadata
+        documents = {}
+        for chunk_info in self.indexes[conv_key].values():
             doc_id = chunk_info.get("document_id")
-            if doc_id:
-                document_ids.add(doc_id)
+            if not doc_id:
+                continue
 
-        # Compile document information
-        documents = []
-        for doc_id in document_ids:
-            doc_chunks = [
-                chunk_id for chunk_id, info in conv_index.items()
-                if info.get("document_id") == doc_id
-            ]
-
-            # Use metadata from the first chunk
-            if doc_chunks:
-                first_chunk_info = conv_index[doc_chunks[0]]
-                metadata = first_chunk_info.get("metadata", {})
-
-                documents.append({
+            if doc_id not in documents:
+                # Extract metadata from the chunk
+                metadata = chunk_info.get("metadata", {})
+                documents[doc_id] = {
                     "document_id": doc_id,
-                    "chunk_count": len(doc_chunks),
-                    "metadata": metadata,
-                    "created_at": first_chunk_info.get("created_at"),
-                })
+                    "filename": metadata.get("filename", "unknown"),
+                    "file_size": metadata.get("file_size", 0),
+                    "mime_type": metadata.get("mime_type", "application/octet-stream"),
+                    "chunk_count": 0,
+                    "created_at": metadata.get("created_at", datetime.now().isoformat()),
+                }
 
-        logger.info(f"Listed {len(documents)} documents for conversation {conversation_id}")
-        return documents
+            # Increment chunk count
+            documents[doc_id]["chunk_count"] += 1
+
+        return list(documents.values())
 
     async def get_storage_info(self) -> Dict[str, Any]:
         """Get information about the storage."""

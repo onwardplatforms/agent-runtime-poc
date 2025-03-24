@@ -88,7 +88,7 @@ async def get_extractor(file_path: Union[str, Path]) -> FileExtractor:
         file_path: Path to the file
 
     Returns:
-        An extractor instance
+        An extractor instance of type FileExtractor
 
     Raises:
         ValueError: If no extractor is available for the file type
@@ -104,11 +104,20 @@ async def get_extractor(file_path: Union[str, Path]) -> FileExtractor:
                 extractor = extractor()
                 # Update the registry so we don't need to re-initialize
                 EXTRACTORS[ext] = extractor
+                if not isinstance(extractor, FileExtractor):
+                    logger.warning(f"Extractor for {ext} is not a FileExtractor. Falling back to text extractor.")
+                    return TextExtractor()
             except ImportError as e:
                 logger.warning(f"Could not load extractor for {ext}: {str(e)}")
                 logger.warning("Falling back to text extractor")
                 return TextExtractor()
-        return extractor
+
+        # Ensure we're returning a FileExtractor
+        if isinstance(extractor, FileExtractor):
+            return extractor
+        else:
+            logger.warning(f"Extractor for {ext} is not a FileExtractor. Falling back to text extractor.")
+            return TextExtractor()
 
     # Default to text extractor
     logger.warning(f"No specific extractor for {ext}, using text extractor")
